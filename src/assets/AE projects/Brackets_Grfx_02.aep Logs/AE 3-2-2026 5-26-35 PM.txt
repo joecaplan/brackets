@@ -1,0 +1,17 @@
+Adobe After Effects v25.6 Windows 64 render log for project “Brackets_Grfx_02.aep”
+
+Rendering started on 3/2/2026 at 5:26:35 PM
+
+  3/2/2026 5:26:35 PM: Starting composition “Brackets_Round02_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Round02_Comp_V1.mp4    3/2/2026 5:30:15 PM: Finished composition “Brackets_Round02_Comp_V1”.
+
+
+  3/2/2026 5:30:16 PM: Starting composition “Brackets_Round03_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Round03_Comp_V1.mp4    3/2/2026 5:33:43 PM: Finished composition “Brackets_Round03_Comp_V1”.
+
+
+  Total Time Elapsed: 7 Min, 8 Sec
+Log closed on 3/2/2026 at 5:33:43 PM
+

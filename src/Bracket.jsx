@@ -1,30 +1,36 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
+import bracketBotMainRiv     from "./assets/rive/bracketBot_main.riv";
+import bracketBotMapRiv      from "./assets/rive/bracketBot_map.riv";
+import bracketBotVerticalRiv from "./assets/rive/bracketBot_vertical.riv";
 import { allMatches } from "./bracketLogic.js";
 import { useGameState } from "./useGameState.js";
-import { RockIcon, RpsIcon } from "./RpsIcons.jsx";
+import { PLAYER_COLORS } from "./categories.js";
+import { RockIcon, RpsIcon, ReactionIcon } from "./RpsIcons.jsx";
 import { QRCodeSVG } from "qrcode.react";
 
 // Audio & video assets
-import menuSongSrc from "./assets/audio/Menu_SongLoop.wav";
-import gameSongSrc from "./assets/audio/Game_Song.wav";
-import endSongSrc from "./assets/audio/End_Song.wav";
-import startSfxSrc from "./assets/audio/Start.wav";
-import rpsBeatSrc from "./assets/audio/RPS-Beat.wav";
-import startAgainSrc from "./assets/audio/StartAgain.wav";
-import playerAddSrc from "./assets/audio/PlayerAdd.wav";
-import resetPlayersSrc from "./assets/audio/ResetPlayers.wav";
-import choiceMadeSrc from "./assets/audio/ChoiceMade.wav";
-import zoomInSrc from "./assets/audio/ZoomIn.wav";
-import rockSfxSrc from "./assets/audio/Rock.wav";
-import paperSfxSrc from "./assets/audio/Paper.wav";
-import scissorsSfxSrc from "./assets/audio/Scissors.wav";
-import titleVideoSrc from "./assets/footage/Brackets_Title_V1.mp4";
-import bumperRound01Src  from "./assets/footage/finalCards/Brackets_Round01_12fps_V1.mp4";
-import bumperRound02Src  from "./assets/footage/finalCards/Brackets_Round02_12fps_V1.mp4";
-import bumperRound03Src  from "./assets/footage/finalCards/Brackets_Round03_12fps_V1.mp4";
-import bumperQFSrc       from "./assets/footage/finalCards/Brackets_Quarterfinals_12fps_V1.mp4";
-import bumperSFSrc       from "./assets/footage/finalCards/Brackets_Semifinals_12fps_V1.mp4";
-import bumperFinalSrc    from "./assets/footage/finalCards/Brackets_FinalRound_12fps_V1.mp4";
+import menuSongSrc from "./assets/audio/Music/Menu_SongLoop.wav";
+import gameSongSrc from "./assets/audio/Music/Game_Song.wav";
+import endSongSrc from "./assets/audio/Music/End_Song.wav";
+import rpsBeatSrc from "./assets/audio/Music/RPS-Beat.wav";
+import oneSecondMusicSrc from "./assets/audio/Music/OneSecond_Music_01.wav";
+import startSfxSrc from "./assets/audio/SFX/Start.wav";
+import startAgainSrc from "./assets/audio/SFX/StartAgain.wav";
+import playerAddSrc from "./assets/audio/SFX/PlayerAdd.wav";
+import resetPlayersSrc from "./assets/audio/SFX/ResetPlayers.wav";
+import choiceMadeSrc from "./assets/audio/SFX/ChoiceMade.wav";
+import zoomInSrc from "./assets/audio/SFX/ZoomIn.wav";
+import rockSfxSrc from "./assets/audio/SFX/Rock.wav";
+import paperSfxSrc from "./assets/audio/SFX/Paper.wav";
+import scissorsSfxSrc from "./assets/audio/SFX/Scissors.wav";
+import titleVideoSrc from "./assets/footage/finalCards/Brackets_Title_Comp_V3.mp4";
+import bumperRound01Src  from "./assets/footage/finalCards/Brackets_Round01_Comp_V1.mp4";
+import bumperRound02Src  from "./assets/footage/finalCards/Brackets_Round02_Comp_V1.mp4";
+import bumperRound03Src  from "./assets/footage/finalCards/Brackets_Round03_Comp_V1.mp4";
+import bumperQFSrc       from "./assets/footage/finalCards/Brackets_Quarterfinals_Comp_V1.mp4";
+import bumperSFSrc       from "./assets/footage/finalCards/Brackets_Semifinals_Comp_V1.mp4";
+import bumperFinalSrc    from "./assets/footage/finalCards/Brackets_FinalRound_Comp_V1.mp4";
 import cursorPointerRaw    from "./assets/SVG/Cursor_Pointer.svg?raw";
 import cursorDragRaw       from "./assets/SVG/cursorDrag.svg?raw";
 import cursorHoverRaw      from "./assets/SVG/Cursor_Hover.svg?raw";
@@ -58,6 +64,14 @@ function IconGear({ color = "#c8f55a", size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
       <path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1s.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+    </svg>
+  );
+}
+
+function IconTrophy({ color = "#c8f55a", size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block", flexShrink: 0 }}>
+      <path d="M19 5h-2V3H7v2H5C3.9 5 3 5.9 3 7v1c0 2.55 1.92 4.63 4.39 4.94A5.01 5.01 0 0 0 11 15.9V18H8v2h8v-2h-3v-2.1a5.01 5.01 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.86 10.4 5 9.3 5 8zm14 0c0 1.3-.86 2.4-2 2.82V7h2v1z"/>
     </svg>
   );
 }
@@ -254,16 +268,16 @@ function useCamera(targetX, targetY, zoomed, totalW) {
 function Slot({ x, y, label, isWinner, isLoser, isActive, pct, showPct, dimmed }) {
   const isEmpty  = !label;
   const bg       = isEmpty ? "#0d180d" : isWinner ? "#c8f55a" : isLoser ? "#090f09" : isActive ? "#122012" : "#0d180d";
-  const fg       = isWinner ? "#060e06" : isLoser ? "#283828" : isEmpty ? "#1a2a1a" : "#c8f55a";
-  const stroke   = isEmpty ? "#111c11" : isWinner || isActive ? "#c8f55a" : "#1a2e1a";
+  const fg       = isWinner ? "#060e06" : isLoser ? "#7a9a7a" : isEmpty ? "#1a2a1a" : "#c8f55a";
+  const stroke   = !isEmpty && (isWinner || isActive) ? "#c8f55a" : "#1a2e1a";
   const text     = isEmpty ? "" : (label.length > 15 ? label.slice(0, 14) + "\u2026" : label);
-  const opacity  = dimmed ? 0.25 : 1;
+  const opacity  = dimmed && !isEmpty ? 0.25 : 1;
 
   return (
     <g opacity={opacity} style={{ transition: "opacity 0.5s" }}>
       <rect
         x={x} y={y} width={SLOT_W} height={SLOT_H} rx={3}
-        fill={bg} stroke={stroke} strokeWidth={isActive || isWinner ? 1.5 : 1}
+        fill={bg} stroke={stroke} strokeWidth={!isEmpty && (isActive || isWinner) ? 1.5 : 1}
         filter={!isEmpty && isWinner ? "url(#wglow)" : !isEmpty && isActive ? "url(#aglow)" : ""}
       />
       {showPct && pct > 0 && (
@@ -285,7 +299,7 @@ function Slot({ x, y, label, isWinner, isLoser, isActive, pct, showPct, dimmed }
       {showPct && !isEmpty && (
         <text
           x={x + SLOT_W - 8} y={y + SLOT_H / 2 + 5}
-          fill={isWinner ? "#060e0699" : "#3a5a3a"} fontSize={10}
+          fill={isWinner ? "#060e0699" : "#7a9a7a"} fontSize={10}
           fontFamily="'PT Mono', monospace" textAnchor="end"
         >
           {Math.round(pct)}%
@@ -331,27 +345,22 @@ function SideLines({ rounds, side, layout }) {
       const midY  = (topCY + botCY) / 2;
       const ready = rounds[r - 1][mIdx * 2] && rounds[r - 1][mIdx * 2].winner
                  && rounds[r - 1][mIdx * 2 + 1] && rounds[r - 1][mIdx * 2 + 1].winner;
-      const color = ready ? "#c8f55a" : "#1a2e1a";
-      const sw    = ready ? 1.5 : 1;
-      const fil   = ready ? "url(#aglow)" : "";
+      const color = ready ? "#c8f55a" : "#304830";
+      const sw    = 2;
       if (side === "left") {
         const ex = xFn(r - 1) + SLOT_W + 18;
         lines.push(
           <g key={"L" + r + "-" + mIdx}>
-            <line x1={xFn(r-1)+SLOT_W} y1={topCY} x2={ex}     y2={topCY} stroke={color} strokeWidth={sw} filter={fil}/>
-            <line x1={xFn(r-1)+SLOT_W} y1={botCY} x2={ex}     y2={botCY} stroke={color} strokeWidth={sw} filter={fil}/>
-            <line x1={ex}              y1={topCY}  x2={ex}     y2={botCY} stroke={color} strokeWidth={sw} filter={fil}/>
-            <line x1={ex}              y1={midY}   x2={xFn(r)} y2={midY}  stroke={color} strokeWidth={sw} filter={fil}/>
+            <path d={`M ${xFn(r-1)+SLOT_W} ${topCY} H ${ex} V ${botCY} H ${xFn(r-1)+SLOT_W}`} stroke={color} strokeWidth={sw} fill="none" strokeLinejoin="miter"/>
+            <line x1={ex} y1={midY} x2={xFn(r)} y2={midY} stroke={color} strokeWidth={sw}/>
           </g>
         );
       } else {
         const ex = xFn(r - 1) - 18;
         lines.push(
           <g key={"R" + r + "-" + mIdx}>
-            <line x1={xFn(r-1)}   y1={topCY} x2={ex}            y2={topCY} stroke={color} strokeWidth={sw} filter={fil}/>
-            <line x1={xFn(r-1)}   y1={botCY} x2={ex}            y2={botCY} stroke={color} strokeWidth={sw} filter={fil}/>
-            <line x1={ex}         y1={topCY}  x2={ex}           y2={botCY} stroke={color} strokeWidth={sw} filter={fil}/>
-            <line x1={ex}         y1={midY}   x2={xFn(r)+SLOT_W} y2={midY} stroke={color} strokeWidth={sw} filter={fil}/>
+            <path d={`M ${xFn(r-1)} ${topCY} H ${ex} V ${botCY} H ${xFn(r-1)}`} stroke={color} strokeWidth={sw} fill="none" strokeLinejoin="miter"/>
+            <line x1={ex} y1={midY} x2={xFn(r)+SLOT_W} y2={midY} stroke={color} strokeWidth={sw}/>
           </g>
         );
       }
@@ -372,19 +381,12 @@ function FinalLines({ leftRounds, rightRounds, layout }) {
   const finX  = centerX - SLOT_W / 2;
   const lEx   = leftX(lR)  + SLOT_W + 18;
   const rEx   = rightX(rR) - 18;
-  const lc    = lWon ? "#c8f55a" : "#1a2e1a";
-  const rc    = rWon ? "#c8f55a" : "#1a2e1a";
-  const lf    = lWon ? "url(#aglow)" : "";
-  const rf    = rWon ? "url(#aglow)" : "";
-
+  const lc    = lWon ? "#c8f55a" : "#304830";
+  const rc    = rWon ? "#c8f55a" : "#304830";
   return (
     <>
-      <line x1={leftX(lR)+SLOT_W} y1={lCY}  x2={lEx} y2={lCY}                           stroke={lc} strokeWidth={lWon?1.5:1} filter={lf}/>
-      <line x1={lEx}              y1={lCY}  x2={lEx} y2={finCY-SLOT_H-SLOT_GAP/2}        stroke={lc} strokeWidth={lWon?1.5:1} filter={lf}/>
-      <line x1={lEx}              y1={finCY-SLOT_H-SLOT_GAP/2} x2={finX} y2={finCY-SLOT_H-SLOT_GAP/2} stroke={lc} strokeWidth={lWon?1.5:1} filter={lf}/>
-      <line x1={rightX(rR)}       y1={rCY}  x2={rEx} y2={rCY}                            stroke={rc} strokeWidth={rWon?1.5:1} filter={rf}/>
-      <line x1={rEx}              y1={rCY}  x2={rEx} y2={finCY+SLOT_GAP/2+SLOT_H}        stroke={rc} strokeWidth={rWon?1.5:1} filter={rf}/>
-      <line x1={rEx}              y1={finCY+SLOT_GAP/2+SLOT_H} x2={finX+SLOT_W} y2={finCY+SLOT_GAP/2+SLOT_H} stroke={rc} strokeWidth={rWon?1.5:1} filter={rf}/>
+      <path d={`M ${leftX(lR)+SLOT_W} ${lCY} H ${lEx} V ${finCY-SLOT_H-SLOT_GAP/2} H ${finX}`}               stroke={lc} strokeWidth={2} fill="none" strokeLinejoin="miter"/>
+      <path d={`M ${rightX(rR)} ${rCY} H ${rEx} V ${finCY+SLOT_GAP/2+SLOT_H} H ${finX+SLOT_W}`}              stroke={rc} strokeWidth={2} fill="none" strokeLinejoin="miter"/>
     </>
   );
 }
@@ -415,11 +417,11 @@ function BracketSVG({ bracket, currentMatchId, zoomed }) {
 
       {labels.map((lbl, i) => (
         <g key={lbl}>
-          <text x={leftX(i)  + SLOT_W/2} y={PAD_TOP-10} fill="#2a4a2a" fontSize={9} textAnchor="middle" fontFamily="'PT Mono', monospace" letterSpacing={2}>{lbl}</text>
-          <text x={rightX(i) + SLOT_W/2} y={PAD_TOP-10} fill="#2a4a2a" fontSize={9} textAnchor="middle" fontFamily="'PT Mono', monospace" letterSpacing={2}>{lbl}</text>
+          <text x={leftX(i)  + SLOT_W/2} y={PAD_TOP-8} fill="#c8f55a" fillOpacity={0.5} fontSize={13} fontWeight="bold" textAnchor="middle" fontFamily="'PT Mono', monospace" letterSpacing={3}>{lbl}</text>
+          <text x={rightX(i) + SLOT_W/2} y={PAD_TOP-8} fill="#c8f55a" fillOpacity={0.5} fontSize={13} fontWeight="bold" textAnchor="middle" fontFamily="'PT Mono', monospace" letterSpacing={3}>{lbl}</text>
         </g>
       ))}
-      <text x={centerX} y={PAD_TOP-10} fill="#2a4a2a" fontSize={9} textAnchor="middle" fontFamily="'PT Mono', monospace" letterSpacing={2}>FINAL</text>
+      <text x={centerX} y={PAD_TOP-8} fill="#c8f55a" fillOpacity={0.5} fontSize={13} fontWeight="bold" textAnchor="middle" fontFamily="'PT Mono', monospace" letterSpacing={3}>FINAL</text>
 
       <SideLines rounds={bracket.left}  side="left"  layout={layout} />
       <SideLines rounds={bracket.right} side="right" layout={layout} />
@@ -454,36 +456,153 @@ function BracketSVG({ bracket, currentMatchId, zoomed }) {
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// ─── Confetti ─────────────────────────────────────────────────────────────────
+function Confetti({ active }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const colors = [...PLAYER_COLORS, "#ffffff"];
+    const particles = Array.from({ length: 200 }, () => ({
+      x:    Math.random() * canvas.width,
+      y:    -20 - Math.random() * canvas.height * 0.4,
+      vx:   (Math.random() - 0.5) * 6,
+      vy:   Math.random() * 4 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      w:    Math.random() * 12 + 4,
+      h:    Math.random() * 6 + 3,
+      rot:  Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.18,
+    }));
+    let animId;
+    let stopped = false;
+    const tick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let allGone = true;
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.07; p.vx *= 0.999;
+        p.rot += p.rotV;
+        if (p.y < canvas.height + 40) allGone = false;
+        const fade = Math.min(1, Math.max(0, 1 - (p.y / canvas.height) * 0.6));
+        ctx.save();
+        ctx.globalAlpha = fade;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      if (!allGone && !stopped) animId = requestAnimationFrame(tick);
+    };
+    animId = requestAnimationFrame(tick);
+    return () => { stopped = true; cancelAnimationFrame(animId); };
+  }, [active]);
+  if (!active) return null;
+  return (
+    <canvas ref={canvasRef} style={{
+      position: "fixed", inset: 0, zIndex: 195, pointerEvents: "none",
+      width: "100%", height: "100%",
+    }} />
+  );
+}
+
 // ─── Match status panel ──────────────────────────────────────────────────────
-function MatchStatus({ match, votedCount, totalPlayers }) {
+function MatchStatus({ match, votedCount, totalPlayers, voters, playerNames, playerColors, matchNote, setMatchNote, isHost }) {
   const [c0, c1] = match.contenders;
   const v0    = (c0 && match.votes[c0]) || 0;
   const v1    = (c1 && match.votes[c1]) || 0;
   const total = v0 + v1;
+  const [noteInput, setNoteInput] = useState(matchNote || "");
+  const voterPids   = Object.keys(voters || {});
+  const playerPids  = Object.keys(playerNames || {});
+
+  // Reset input when match changes
+  useEffect(() => { setNoteInput(matchNote || ""); }, [match.id]); // eslint-disable-line
 
   return (
     <div style={s.panel}>
       <div style={s.panelInner}>
         <div style={s.matchTag}>NOW VOTING</div>
         <div style={s.vsRow}>
-          <div style={s.statusContender}>
+          {/* Left contender */}
+          <div style={{ ...s.statusContender, background: v0 > v1 && total > 0 ? "#0c1d0c" : "#0f1f0f" }}>
             <span style={{ fontSize: 13, letterSpacing: 2 }}>{c0}</span>
+            {v0 > 0 && <span style={{ fontSize: 20, fontWeight: "bold", color: "#c8f55a", lineHeight: 1 }}>{v0}</span>}
           </div>
+          {/* Center */}
           <div style={s.vsCenter}>
             <div style={s.vsWord}>VS</div>
             <div style={s.voteCount}>
-              {votedCount}<span style={{ color: "#2a4a2a" }}>/{totalPlayers}</span>
-              <div style={{ fontSize: 9, color: "#2a4a2a", letterSpacing: 2 }}>VOTED</div>
+              {votedCount}<span style={{ color: "#6a8a6a" }}>/{totalPlayers}</span>
+              <div style={{ fontSize: 9, color: "#6a8a6a", letterSpacing: 2 }}>VOTED</div>
             </div>
           </div>
-          <div style={s.statusContender}>
+          {/* Right contender */}
+          <div style={{ ...s.statusContender, background: v1 > v0 && total > 0 ? "#0c1d0c" : "#0f1f0f" }}>
             <span style={{ fontSize: 13, letterSpacing: 2 }}>{c1}</span>
+            {v1 > 0 && <span style={{ fontSize: 20, fontWeight: "bold", color: "#c8f55a", lineHeight: 1 }}>{v1}</span>}
           </div>
         </div>
+
+        {/* Vote split bar */}
         {total > 0 && (
           <div style={s.voteBarTrack}>
             <div style={{ ...s.voteBarFill, width: (v0/total)*100 + "%" }} />
           </div>
+        )}
+
+        {/* Player vote dots — glow in their color when they've voted */}
+        {playerPids.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 7, marginTop: 7, flexWrap: "wrap" }}>
+            {playerPids.map(pid => {
+              const colorIdx = playerColors?.[pid] ?? 0;
+              const color    = PLAYER_COLORS[colorIdx % PLAYER_COLORS.length];
+              const hasVoted = voterPids.includes(pid);
+              return (
+                <div key={pid} title={playerNames[pid]} style={{
+                  width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+                  background:  hasVoted ? color : "transparent",
+                  border:      `2px solid ${hasVoted ? color : "#1a2e1a"}`,
+                  boxShadow:   hasVoted ? `0 0 8px ${color}99` : "none",
+                  transition:  "background 0.25s, border-color 0.25s, box-shadow 0.25s",
+                  animation:   hasVoted ? "voteDotIn 0.25s cubic-bezier(0.22,1,0.36,1) both" : "none",
+                }} />
+              );
+            })}
+          </div>
+        )}
+
+        {/* Commentary display */}
+        {matchNote && (
+          <div style={{
+            textAlign: "center", fontSize: 13, letterSpacing: 2, color: "#c8f55a",
+            padding: "5px 8px 2px", borderTop: "1px solid #0f1f0f", marginTop: 5,
+          }}>{matchNote}</div>
+        )}
+
+        {/* Commentary input — host only */}
+        {isHost && (
+          <input
+            style={{
+              width: "100%", boxSizing: "border-box", display: "block",
+              background: "#080f08", border: "none", borderTop: "1px solid #0d180d",
+              color: "#7a9a7a", fontFamily: "'PT Mono',monospace", fontSize: 10,
+              letterSpacing: 2, padding: "5px 8px", outline: "none", marginTop: 4,
+            }}
+            placeholder="add commentary… (enter to save)"
+            maxLength={60}
+            value={noteInput}
+            onChange={e => setNoteInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") setMatchNote(noteInput || null); }}
+            onBlur={() => setMatchNote(noteInput || null)}
+          />
         )}
       </div>
     </div>
@@ -491,9 +610,8 @@ function MatchStatus({ match, votedCount, totalPlayers }) {
 }
 
 // ─── Main app ────────────────────────────────────────────────────────────────
-// ─── Tiebreaker / RPS panel ──────────────────────────────────────────────────
-// ─── One Second live panel ─────────────────────────────────────────────────────
-function OneSecondPanel({ tiebreaker, playerNames }) {
+// ─── One Second — big fullscreen panel (replaces bracket map) ────────────────
+function BigOneSecondPanel({ tiebreaker, playerNames, playerColors, preMatch }) {
   const [displayMs, setDisplayMs] = useState(0);
   const os = tiebreaker.oneSecond;
 
@@ -508,6 +626,8 @@ function OneSecondPanel({ tiebreaker, playerNames }) {
   const fmtMs = (ms) => (ms / 1000).toFixed(3);
   const p1Name = (playerNames && playerNames[os.player1]) || "Player 1";
   const p2Name = (playerNames && playerNames[os.player2]) || "Player 2";
+  const c0Color = PLAYER_COLORS[(playerColors?.[os.player1] ?? 0) % PLAYER_COLORS.length];
+  const c1Color = PLAYER_COLORS[(playerColors?.[os.player2] ?? 0) % PLAYER_COLORS.length];
   const isRunning = os.osPhase === "running_p1" || os.osPhase === "running_p2";
 
   let statusText = "";
@@ -517,151 +637,544 @@ function OneSecondPanel({ tiebreaker, playerNames }) {
   else if (os.osPhase === "waiting_p2") statusText = `${p2Name} getting ready\u2026`;
   else if (os.osPhase === "running_p2") statusText = `${p2Name} is timing!`;
   else if (os.osPhase === "done") {
-    const w = os.winner === "p1" ? tiebreaker.c0 : tiebreaker.c1;
-    statusText = `${w} WINS!`;
+    if (preMatch) {
+      const winnerName = os.winner === "p1" ? p1Name : p2Name;
+      statusText = `${winnerName} VOTES DOUBLE!`;
+    } else {
+      const w = os.winner === "p1" ? tiebreaker.c0 : tiebreaker.c1;
+      statusText = `${w} WINS!`;
+    }
   }
 
+  const catBox = {
+    flex: 1, maxWidth: 260, padding: "18px 24px",
+    background: "#0f1f0f", border: "1px solid #1a2e1a",
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+    fontFamily: "'PT Mono', monospace",
+  };
+
   return (
-    <div style={s.panel}>
-      <div style={s.panelInner}>
-        <div style={s.matchTag}>ONE SECOND CHALLENGE</div>
-        <div style={s.rpsPlayerNames}>{p1Name} vs {p2Name}</div>
-        <div style={s.vsRow}>
-          {/* Left contender */}
-          <div style={s.statusContender}>
-            <span style={{ fontSize: 13, letterSpacing: 2 }}>{tiebreaker.c0}</span>
-            {os.elapsed1 != null && (
-              <span style={{ fontSize: 22, fontWeight: "bold", color: os.winner === "p1" ? "#c8f55a" : "#3a5a3a",
-                fontVariantNumeric: "tabular-nums" }}>
-                {fmtMs(os.elapsed1)}s
-              </span>
-            )}
-            {os.elapsed1 != null && (
-              <span style={{ fontSize: 10, color: "#2a4a2a", letterSpacing: 1 }}>
-                \u00B1{fmtMs(Math.abs(os.elapsed1 - 1000))}s
-              </span>
-            )}
-          </div>
-          {/* Center — live timer */}
-          <div style={{ ...s.vsCenter, minWidth: 100 }}>
-            <div style={s.vsWord}>VS</div>
-            {isRunning && (
-              <div style={{ fontSize: 32, fontWeight: "bold", color: "#c8f55a", letterSpacing: 1,
-                fontVariantNumeric: "tabular-nums", fontFamily: "'PT Mono', monospace",
-                textShadow: "0 0 20px #c8f55a66", lineHeight: 1.1, marginTop: 6 }}>
-                {fmtMs(displayMs)}
-              </div>
-            )}
-          </div>
-          {/* Right contender */}
-          <div style={s.statusContender}>
-            <span style={{ fontSize: 13, letterSpacing: 2 }}>{tiebreaker.c1}</span>
-            {os.elapsed2 != null && (
-              <span style={{ fontSize: 22, fontWeight: "bold", color: os.winner === "p2" ? "#c8f55a" : "#3a5a3a",
-                fontVariantNumeric: "tabular-nums" }}>
-                {fmtMs(os.elapsed2)}s
-              </span>
-            )}
-            {os.elapsed2 != null && (
-              <span style={{ fontSize: 10, color: "#2a4a2a", letterSpacing: 1 }}>
-                \u00B1{fmtMs(Math.abs(os.elapsed2 - 1000))}s
-              </span>
-            )}
-          </div>
+    <div style={{
+      flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", gap: 28, padding: "24px 48px",
+      position: "relative", overflow: "hidden",
+    }}>
+      {/* Header */}
+      {preMatch && (
+        <div style={{ fontSize: 11, letterSpacing: 6, color: "#c8f55a", background: "#0a1f0a",
+          border: "1px solid #c8f55a", borderRadius: 20, padding: "4px 16px" }}>
+          ⚡ PRE-MATCH CHALLENGE
         </div>
-        <div style={{ textAlign: "center", marginTop: 10, fontSize: 14, letterSpacing: 3 }}>{statusText}</div>
+      )}
+      <div style={{ fontSize: 30, fontWeight: "bold", letterSpacing: 8, color: "#c8f55a",
+        textAlign: "center", textShadow: "0 0 20px #c8f55a44" }}>
+        ONE SECOND CHALLENGE
+      </div>
+
+      {/* Player names */}
+      <div style={{ fontSize: 22, letterSpacing: 4, fontWeight: "bold", textAlign: "center" }}>
+        <span style={{ color: c0Color }}>{p1Name}</span>&nbsp;&nbsp;<span style={{ color: "#1e3e1e" }}>vs</span>&nbsp;&nbsp;<span style={{ color: c1Color }}>{p2Name}</span>
+      </div>
+
+      {/* Category boxes */}
+      <div style={{ display: "flex", gap: 32, width: "100%", maxWidth: 640, justifyContent: "center" }}>
+        <div style={{
+          ...catBox,
+          border: `1px solid ${os.winner === "p1" ? c0Color : "#1a2e1a"}`,
+          boxShadow: os.winner === "p1" ? `0 0 32px ${c0Color}44` : "none",
+        }}>
+          <div style={{ fontSize: 13, letterSpacing: 2, color: c0Color, textAlign: "center" }}>{tiebreaker.c0}</div>
+          {os.elapsed1 != null && (
+            <div style={{ fontSize: 34, fontWeight: "bold", color: os.winner === "p1" ? "#c8f55a" : "#7a9a7a",
+              fontVariantNumeric: "tabular-nums" }}>
+              {fmtMs(os.elapsed1)}s
+            </div>
+          )}
+          {os.elapsed1 != null && (
+            <div style={{ fontSize: 11, color: "#6a8a6a", letterSpacing: 1 }}>
+              {fmtMs(Math.abs(os.elapsed1 - 1000))}s from 1s
+            </div>
+          )}
+        </div>
+        <div style={{
+          ...catBox,
+          border: `1px solid ${os.winner === "p2" ? c1Color : "#1a2e1a"}`,
+          boxShadow: os.winner === "p2" ? `0 0 32px ${c1Color}44` : "none",
+        }}>
+          <div style={{ fontSize: 13, letterSpacing: 2, color: c1Color, textAlign: "center" }}>{tiebreaker.c1}</div>
+          {os.elapsed2 != null && (
+            <div style={{ fontSize: 34, fontWeight: "bold", color: os.winner === "p2" ? "#c8f55a" : "#7a9a7a",
+              fontVariantNumeric: "tabular-nums" }}>
+              {fmtMs(os.elapsed2)}s
+            </div>
+          )}
+          {os.elapsed2 != null && (
+            <div style={{ fontSize: 11, color: "#6a8a6a", letterSpacing: 1 }}>
+              {fmtMs(Math.abs(os.elapsed2 - 1000))}s from 1s
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Big live timer */}
+      <div style={{ minHeight: 110, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        {isRunning && (
+          <>
+            <div style={{ fontSize: 11, letterSpacing: 5, color: "#6a8a6a" }}>\u23F1 TIMING</div>
+            <div style={{
+              fontSize: 96, fontWeight: "bold", color: "#c8f55a",
+              fontFamily: "'PT Mono', monospace", letterSpacing: 4,
+              textShadow: "0 0 60px #c8f55a66, 0 0 120px #c8f55a22",
+              fontVariantNumeric: "tabular-nums", lineHeight: 1,
+            }}>
+              {fmtMs(displayMs)}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Status */}
+      <div style={{
+        fontSize: os.osPhase === "done" ? 22 : 15, letterSpacing: 3,
+        color: os.osPhase === "done" ? "#c8f55a" : "#6a8a6a",
+        textAlign: "center", minHeight: 28,
+        textShadow: os.osPhase === "done" ? "0 0 24px #c8f55a66" : "none",
+      }}>
+        {statusText}
       </div>
     </div>
   );
 }
 
-function TiebreakerPanel({ phase, tiebreaker, isHost, hostPickWinner, startRPS, startOneSecond, playerNames }) {
+// ─── RPS — big fullscreen panel with shoot animation ─────────────────────────
+function BigRpsPanel({ tiebreaker, playerNames, playerColors, onWinnerRevealed, onDrawRevealed, preMatch }) {
+  const rps = tiebreaker.rps;
+  const [animPhase, setAnimPhase] = useState("waiting"); // "waiting"|"bouncing"|"revealed"|"winner"
+  const revealedRef = useRef(false);
+  const roundKeyRef = useRef(null);
+  const drawRevealedRef = useRef(false);
+
+  const name1 = (playerNames && playerNames[rps.player1]) || "Player 1";
+  const name2 = (playerNames && playerNames[rps.player2]) || "Player 2";
+  const c0Color = PLAYER_COLORS[(playerColors?.[rps.player1] ?? 0) % PLAYER_COLORS.length];
+  const c1Color = PLAYER_COLORS[(playerColors?.[rps.player2] ?? 0) % PLAYER_COLORS.length];
+  const bothChose = !!(rps.choice1 && rps.choice2);
+  const isWin = !!(rps.result && rps.result !== "draw");
+  const roundKey = `${rps.round}-${rps.choice1}-${rps.choice2}`;
+
+  const isDraw = rps.result === "draw";
+
+  // Call onDrawRevealed when the bounce animation finishes showing a draw
+  useEffect(() => {
+    if (animPhase !== "revealed" || !isDraw || drawRevealedRef.current) return;
+    drawRevealedRef.current = true;
+    onDrawRevealed?.();
+  }, [animPhase, isDraw]); // eslint-disable-line
+
+  // Start bounce when both choices arrive for this round
+  useEffect(() => {
+    if (!bothChose) {
+      setAnimPhase("waiting");
+      revealedRef.current = false;
+      drawRevealedRef.current = false;
+      roundKeyRef.current = null;
+      return;
+    }
+    if (roundKeyRef.current === roundKey) return; // already handled this round
+    roundKeyRef.current = roundKey;
+    setAnimPhase("bouncing");
+    revealedRef.current = false;
+    const t = setTimeout(() => {
+      setAnimPhase("revealed");
+      revealedRef.current = true;
+    }, 1350); // 3 bounces × 0.42s = 1.26s, slight buffer
+    return () => clearTimeout(t);
+  }, [bothChose, roundKey]); // eslint-disable-line
+
+  // Transition to winner once revealed and result is set
+  useEffect(() => {
+    if (animPhase !== "revealed" || !isWin) return;
+    const t = setTimeout(() => {
+      setAnimPhase("winner");
+      onWinnerRevealed?.(rps.result === "p1" ? rps.choice1 : rps.choice2);
+    }, 450);
+    return () => clearTimeout(t);
+  }, [animPhase, isWin]); // eslint-disable-line
+
+  // If result arrives after reveal already happened
+  useEffect(() => {
+    if (!isWin || !revealedRef.current || animPhase === "winner") return;
+    const t = setTimeout(() => {
+      setAnimPhase("winner");
+      onWinnerRevealed?.(rps.result === "p1" ? rps.choice1 : rps.choice2);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [isWin]); // eslint-disable-line
+
+  const winner = rps.result;
+  const revealed = animPhase === "winner";
+  const p1Winner = revealed && winner === "p1";
+  const p1Loser  = revealed && winner === "p2";
+  const p2Winner = revealed && winner === "p2";
+  const p2Loser  = revealed && winner === "p1";
+
+  // Icons: show rock during bounce/waiting, reveal actual choice after
+  const p1Icon = (animPhase === "bouncing" || animPhase === "waiting") ? "rock" : (rps.choice1 || "rock");
+  const p2Icon = (animPhase === "bouncing" || animPhase === "waiting") ? "rock" : (rps.choice2 || "rock");
+
+  // Positions during winner phase
+  const p1Left  = (animPhase === "winner" && p1Winner) ? "50%" : "25%";
+  const p2Left  = (animPhase === "winner" && p2Winner) ? "50%" : "75%";
+  const p1Scale = animPhase === "winner" ? (p1Winner ? 1.6 : p1Loser ? 0 : 1) : 1;
+  const p2Scale = animPhase === "winner" ? (p2Winner ? 1.6 : p2Loser ? 0 : 1) : 1;
+  const p1Opac  = (animPhase === "winner" && p1Loser) ? 0 : 1;
+  const p2Opac  = (animPhase === "winner" && p2Loser) ? 0 : 1;
+  const winTx   = "all 0.7s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+
+  let statusText = "Waiting for choices\u2026";
+  if (animPhase === "bouncing") statusText = "ROCK\u2026 PAPER\u2026 SCISSORS\u2026 SHOOT!";
+  else if (rps.result === "draw") statusText = "DRAW \u2014 going again\u2026";
+  else if (rps.result === "p1") statusText = preMatch ? name1 + " VOTES DOUBLE!" : tiebreaker.c0 + " WINS!";
+  else if (rps.result === "p2") statusText = preMatch ? name2 + " VOTES DOUBLE!" : tiebreaker.c1 + " WINS!";
+  else if (rps.choice1 && !rps.choice2) statusText = name1 + " is ready\u2026";
+  else if (!rps.choice1 && rps.choice2) statusText = name2 + " is ready\u2026";
+
+  const catBox = {
+    flex: 1, maxWidth: 220, padding: "14px 20px",
+    background: "#0f1f0f",
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+    fontFamily: "'PT Mono', monospace",
+  };
+
+  return (
+    <div style={{
+      flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", gap: 22, padding: "20px 48px",
+      position: "relative", overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        {preMatch && (
+          <div style={{ fontSize: 11, letterSpacing: 6, color: "#c8f55a", background: "#0a1f0a",
+            border: "1px solid #c8f55a", borderRadius: 20, padding: "4px 16px", marginBottom: 2 }}>
+            ⚡ PRE-MATCH CHALLENGE
+          </div>
+        )}
+        <div style={{ fontSize: 30, fontWeight: "bold", letterSpacing: 8, color: "#c8f55a",
+          textAlign: "center", textShadow: "0 0 20px #c8f55a44" }}>
+          ROCK PAPER SCISSORS
+        </div>
+        <div style={{ fontSize: 10, letterSpacing: 4, color: "#6a8a6a" }}>ROUND {rps.round}</div>
+      </div>
+
+      {/* Player names */}
+      <div style={{ fontSize: 22, letterSpacing: 4, fontWeight: "bold", textAlign: "center" }}>
+        <span style={{ color: c0Color }}>{name1}</span>&nbsp;&nbsp;<span style={{ color: "#1e3e1e" }}>vs</span>&nbsp;&nbsp;<span style={{ color: c1Color }}>{name2}</span>
+      </div>
+
+      {/* Category boxes */}
+      <div style={{ display: "flex", gap: 32, width: "100%", maxWidth: 560, justifyContent: "center" }}>
+        <div style={{
+          ...catBox,
+          border: `1px solid ${p1Winner ? c0Color : "#1a2e1a"}`,
+          boxShadow: p1Winner ? `0 0 32px ${c0Color}44` : "none",
+        }}>
+          <div style={{ fontSize: 12, letterSpacing: 2, color: c0Color, textAlign: "center" }}>{tiebreaker.c0}</div>
+          {p1Winner && rps.choice1 && (
+            <div style={{ fontSize: 11, letterSpacing: 2, color: c0Color }}>{rps.choice1.toUpperCase()}</div>
+          )}
+        </div>
+        <div style={{
+          ...catBox,
+          border: `1px solid ${p2Winner ? c1Color : "#1a2e1a"}`,
+          boxShadow: p2Winner ? `0 0 32px ${c1Color}44` : "none",
+        }}>
+          <div style={{ fontSize: 12, letterSpacing: 2, color: c1Color, textAlign: "center" }}>{tiebreaker.c1}</div>
+          {p2Winner && rps.choice2 && (
+            <div style={{ fontSize: 11, letterSpacing: 2, color: c1Color }}>{rps.choice2.toUpperCase()}</div>
+          )}
+        </div>
+      </div>
+
+      {/* Icon zone — position:relative so icons can be absolutely placed */}
+      <div style={{ position: "relative", width: "100%", maxWidth: 720, height: 220 }}>
+        {/* p1 icon */}
+        <div style={{
+          position: "absolute", left: p1Left, top: "50%",
+          transform: `translate(-50%, -50%) scale(${p1Scale})`,
+          opacity: p1Opac,
+          transition: animPhase === "winner" ? winTx : "none",
+          zIndex: p1Winner ? 2 : 1,
+        }}>
+          <div className={animPhase === "bouncing" ? "anim-rps-bounce" : ""}>
+            <RpsIcon choice={p1Icon} size={140}
+              color={(animPhase === "winner" && p1Loser) ? "#1a3a1a" : c0Color} />
+          </div>
+        </div>
+
+        {/* p2 icon */}
+        <div style={{
+          position: "absolute", left: p2Left, top: "50%",
+          transform: `translate(-50%, -50%) scale(${p2Scale})`,
+          opacity: p2Opac,
+          transition: animPhase === "winner" ? winTx : "none",
+          zIndex: p2Winner ? 2 : 1,
+        }}>
+          <div className={animPhase === "bouncing" ? "anim-rps-bounce" : ""}>
+            <RpsIcon choice={p2Icon} size={140}
+              color={(animPhase === "winner" && p2Loser) ? "#1a3a1a" : c1Color} />
+          </div>
+        </div>
+
+        {/* VS — hidden once winner is determined */}
+        {animPhase !== "winner" && (
+          <div style={{
+            position: "absolute", left: "50%", top: "50%",
+            transform: "translate(-50%, -50%)",
+            fontSize: 20, fontWeight: "bold", color: "#1e3e1e", letterSpacing: 3,
+            pointerEvents: "none",
+          }}>VS</div>
+        )}
+      </div>
+
+      {/* Status */}
+      <div style={{
+        fontSize: isWin ? 22 : 14, letterSpacing: 3,
+        color: isWin ? "#c8f55a" : "#6a8a6a",
+        textShadow: isWin ? "0 0 24px #c8f55a66" : "none",
+        textAlign: "center", minHeight: 28,
+        transition: "font-size 0.3s ease",
+      }}>
+        {statusText}
+      </div>
+    </div>
+  );
+}
+
+// ─── Tiebreaker decision panel (host picks method) ────────────────────────────
+function TiebreakerPanel({ tiebreaker, isHost, hostPickWinner, startRPS, startOneSecond, voters, playerColors }) {
   if (!tiebreaker) return null;
-
-  // One Second phase
-  if (phase === "oneSecond" && tiebreaker.oneSecond) {
-    return <OneSecondPanel tiebreaker={tiebreaker} playerNames={playerNames} />;
-  }
-
-  // RPS phase
-  if (phase === "rps" && tiebreaker.rps) {
-    const rps = tiebreaker.rps;
-    const name1 = (playerNames && playerNames[rps.player1]) || "Player 1";
-    const name2 = (playerNames && playerNames[rps.player2]) || "Player 2";
-    let statusText = "Waiting for choices\u2026";
-    if (rps.result === "draw") statusText = "DRAW \u2014 going again\u2026";
-    else if (rps.result === "p1") statusText = tiebreaker.c0 + " WINS!";
-    else if (rps.result === "p2") statusText = tiebreaker.c1 + " WINS!";
-    else if (rps.choice1 && !rps.choice2) statusText = name1 + " is ready\u2026";
-    else if (!rps.choice1 && rps.choice2) statusText = name2 + " is ready\u2026";
-
-    return (
-      <div style={s.panel}>
-        <div style={s.panelInner}>
-          <div style={s.matchTag}>ROCK PAPER SCISSORS \u00B7 ROUND {rps.round}</div>
-          <div style={s.rpsPlayerNames}>{name1} vs {name2}</div>
-          <div style={s.vsRow}>
-            <div style={s.statusContender}>
-              <span style={{ fontSize: 13, letterSpacing: 2 }}>{tiebreaker.c0}</span>
-              {rps.choice1 && rps.choice2 && <RpsIcon choice={rps.choice1} size={32} />}
-            </div>
-            <div style={s.vsCenter}>
-              <div style={s.vsWord}>VS</div>
-            </div>
-            <div style={s.statusContender}>
-              <span style={{ fontSize: 13, letterSpacing: 2 }}>{tiebreaker.c1}</span>
-              {rps.choice1 && rps.choice2 && <RpsIcon choice={rps.choice2} size={32} />}
-            </div>
+  const c0Pid = Object.entries(voters || {}).find(([, v]) => v === tiebreaker.c0)?.[0];
+  const c1Pid = Object.entries(voters || {}).find(([, v]) => v === tiebreaker.c1)?.[0];
+  const c0Color = c0Pid ? PLAYER_COLORS[(playerColors?.[c0Pid] ?? 0) % PLAYER_COLORS.length] : "#c8f55a";
+  const c1Color = c1Pid ? PLAYER_COLORS[(playerColors?.[c1Pid] ?? 0) % PLAYER_COLORS.length] : "#c8f55a";
+  return (
+    <div style={s.panel}>
+      <div style={s.panelInner}>
+        <div style={s.matchTag}>TIE DETECTED</div>
+        <div style={s.vsRow}>
+          <div style={s.statusContender}>
+            <span style={{ fontSize: 13, letterSpacing: 2, color: c0Color }}>{tiebreaker.c0}</span>
           </div>
-          <div style={{ textAlign: "center", marginTop: 10, fontSize: 14, letterSpacing: 3 }}>{statusText}</div>
-        </div>
-      </div>
-    );
-  }
-
-  // Tiebreaker decision phase (host picks method)
-  if (phase === "tiebreaker") {
-    return (
-      <div style={s.panel}>
-        <div style={s.panelInner}>
-          <div style={s.matchTag}>TIE DETECTED</div>
-          <div style={s.vsRow}>
-            <div style={s.statusContender}>
-              <span style={{ fontSize: 13, letterSpacing: 2 }}>{tiebreaker.c0}</span>
-            </div>
-            <div style={s.vsCenter}>
-              <div style={s.vsWord}>TIE</div>
-            </div>
-            <div style={s.statusContender}>
-              <span style={{ fontSize: 13, letterSpacing: 2 }}>{tiebreaker.c1}</span>
-            </div>
+          <div style={s.vsCenter}>
+            <div style={s.vsWord}>TIE</div>
           </div>
-          {isHost && (
-            <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
-              <button style={{ ...s.startBtn, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={startRPS}><RockIcon size={18} /> RPS</button>
-              <button style={s.startBtn} onClick={startOneSecond}>\u23F1 ONE SECOND</button>
-              <button style={s.startBtn} onClick={() => hostPickWinner(tiebreaker.c0)}>{tiebreaker.c0}</button>
-              <button style={s.startBtn} onClick={() => hostPickWinner(tiebreaker.c1)}>{tiebreaker.c1}</button>
-            </div>
-          )}
-          {!isHost && (
-            <div style={{ textAlign: "center", marginTop: 10, fontSize: 11, color: "#2a4a2a", letterSpacing: 2 }}>Host is deciding\u2026</div>
-          )}
+          <div style={s.statusContender}>
+            <span style={{ fontSize: 13, letterSpacing: 2, color: c1Color }}>{tiebreaker.c1}</span>
+          </div>
         </div>
+        {isHost && (
+          <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <button style={{ ...s.startBtn, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={startRPS}><RockIcon size={18} /> RPS</button>
+            <button style={s.startBtn} onClick={startOneSecond}>\u23F1 ONE SECOND</button>
+            <button style={s.startBtn} onClick={() => hostPickWinner(tiebreaker.c0)}>{tiebreaker.c0}</button>
+            <button style={s.startBtn} onClick={() => hostPickWinner(tiebreaker.c1)}>{tiebreaker.c1}</button>
+          </div>
+        )}
+        {!isHost && (
+          <div style={{ textAlign: "center", marginTop: 10, fontSize: 11, color: "#6a8a6a", letterSpacing: 2 }}>Host is deciding\u2026</div>
+        )}
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  return null;
+// ─── PlayerRobot — tiny colored robot head per player ────────────────────────
+function PlayerRobot({ color, size = 16, volume = 1 }) {
+  const vmRef = useRef(null);
+
+  const { rive, RiveComponent } = useRive({
+    src: bracketBotVerticalRiv,
+    artboard: "Artboard",
+    stateMachines: "bracketBot",
+    autoplay: true,
+    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
+  });
+
+  useEffect(() => {
+    if (!rive) return;
+    const vm = rive.viewModelByName("ViewModel1");
+    if (!vm) return;
+    const vmi = vm.defaultInstance();
+    if (!vmi) return;
+    vmRef.current = vmi;
+    try { rive.bindViewModelInstance(vmi); } catch {}
+    if (color && color.length >= 7) {
+      const cp = vmi.color("colorProperty");
+      if (cp) cp.rgb(parseInt(color.slice(1,3),16), parseInt(color.slice(3,5),16), parseInt(color.slice(5,7),16));
+    }
+  }, [rive]); // eslint-disable-line
+
+  useEffect(() => {
+    const vmi = vmRef.current;
+    if (!vmi || !color || color.length < 7) return;
+    const cp = vmi.color("colorProperty");
+    if (cp) cp.rgb(parseInt(color.slice(1,3),16), parseInt(color.slice(3,5),16), parseInt(color.slice(5,7),16));
+  }, [color]);
+
+  useEffect(() => {
+    if (rive) rive.volume = volume;
+  }, [rive, volume]);
+
+  return (
+    <div style={{ width: size, height: size, flexShrink: 0 }}>
+      <RiveComponent style={{ width: "100%", height: "100%", display: "block" }} />
+    </div>
+  );
+}
+
+// ─── BracketBot ───────────────────────────────────────────────────────────────
+function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboard", stateMachine = "bracketBot", volume = 1 }) {
+  const wrapRef    = useRef(null);
+  const xInputRef  = useRef(null);
+  const yInputRef  = useRef(null);
+  const triggerRef = useRef(null);
+
+  const riveConfig = {
+    src,
+    artboard,
+    autoplay: true,
+    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
+  };
+  if (stateMachine) riveConfig.stateMachines = stateMachine;
+
+  const { rive, RiveComponent } = useRive(riveConfig);
+
+  // Grab state machine inputs once Rive loads
+  useEffect(() => {
+    if (!rive || !stateMachine) return;
+    const inputs = rive.stateMachineInputs(stateMachine);
+    if (!inputs || !inputs.length) return;
+    const lc = (s) => s.toLowerCase().replace(/\s/g, "");
+    const find = (...names) => inputs.find(i => names.some(n => lc(i.name) === lc(n)));
+    xInputRef.current  = find("mouseX", "x", "cursorX", "lookX", "eyeX", "posX");
+    yInputRef.current  = find("mouseY", "y", "cursorY", "lookY", "eyeY", "posY");
+    triggerRef.current = find("click", "Click", "tap", "Tap", "speak", "Speak", "talk", "Talk", "pressed", "Pressed");
+  }, [rive]);
+
+  // Suppress false pointerleave/mouseleave on the canvas.
+  // When the cursor moves over a higher z-index element (lobbyContentWrap etc.) the
+  // browser fires pointerleave on the canvas, making Rive think the cursor left the
+  // 1920×1080 hitbox. We intercept in capture phase (before Rive's listener) and
+  // cancel the event as long as the cursor is still anywhere inside the viewport.
+  useEffect(() => {
+    if (!rive) return;
+    const canvas = wrapRef.current?.querySelector("canvas");
+    if (!canvas) return;
+    const suppress = (e) => {
+      if (e.clientX >= 0 && e.clientX <= window.innerWidth &&
+          e.clientY >= 0 && e.clientY <= window.innerHeight) {
+        e.stopImmediatePropagation();
+      }
+    };
+    canvas.addEventListener("pointerleave", suppress, true);
+    canvas.addEventListener("mouseleave",   suppress, true);
+    return () => {
+      canvas.removeEventListener("pointerleave", suppress, true);
+      canvas.removeEventListener("mouseleave",   suppress, true);
+    };
+  }, [rive]);
+
+  // Global mouse → forward to Rive canvas so eye tracking works even when the cursor
+  // is over a higher z-index element (lobbyContentWrap etc.)
+  const handleMouseMove = useCallback((e) => {
+    if (!wrapRef.current) return;
+    const rect = wrapRef.current.getBoundingClientRect();
+    // Update JS state-machine inputs if they exist
+    const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const ny = Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height));
+    if (xInputRef.current) xInputRef.current.value = nx * 100;
+    if (yInputRef.current) yInputRef.current.value = ny * 100;
+    // Dispatch a synthetic pointermove directly on the canvas so Rive's internal
+    // cursor-follow receives the event regardless of z-index stacking
+    const canvas = wrapRef.current.querySelector("canvas");
+    if (canvas) {
+      canvas.dispatchEvent(new PointerEvent("pointermove", {
+        clientX: e.clientX, clientY: e.clientY,
+        pointerId: 1, bubbles: false, cancelable: true,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, [handleMouseMove]);
+
+  const handleClick = useCallback((e) => {
+    if (triggerRef.current) {
+      try { triggerRef.current.fire(); } catch { try { triggerRef.current.value = true; } catch {} }
+    }
+    // Also dispatch synthetic pointer events directly on the canvas so Rive's
+    // internal audio/state machine responds natively (same pattern as pointermove)
+    const canvas = wrapRef.current?.querySelector("canvas");
+    if (canvas) {
+      canvas.dispatchEvent(new PointerEvent("pointerdown", {
+        clientX: e.clientX, clientY: e.clientY,
+        pointerId: 1, bubbles: false, cancelable: true,
+      }));
+      canvas.dispatchEvent(new PointerEvent("pointerup", {
+        clientX: e.clientX, clientY: e.clientY,
+        pointerId: 1, bubbles: false, cancelable: true,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [handleClick]);
+
+  useEffect(() => {
+    if (rive) rive.volume = volume;
+  }, [rive, volume]);
+
+  const wrapStyle = width != null
+    ? { width, height, display: "block", flexShrink: 0 }
+    : { position: "absolute", inset: 0, zIndex: 100 };
+
+  return (
+    <div ref={wrapRef} style={wrapStyle}>
+      <RiveComponent style={{ width: "100%", height: "100%", display: "block" }} />
+    </div>
+  );
+}
+
+function generateRoomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars (0/O, 1/I)
+  return Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
 export default function BracketApp() {
+  // Room code — read from URL or auto-generate and persist to URL
+  const [roomCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const existing = params.get("room");
+    if (existing) return existing.toUpperCase();
+    const code = generateRoomCode();
+    const url = new URL(window.location.href);
+    url.searchParams.set("room", code);
+    window.history.replaceState({}, "", url.toString());
+    return code;
+  });
+
   const {
     phase, category, playerCount, totalPlayers, isHost,
     bracket, currentMatchId: currentMatch, champion, votedCount,
-    tiebreaker, playerNames, scores, connected,
-    startNext, skip, playAgain, hostPickWinner, startRPS, startOneSecond, clearPlayers
-  } = useGameState();
+    tiebreaker, playerNames, scores, connected, globalStats,
+    voters, playerColors, matchNote, setMatchNote, doubleVoter, liveReactions,
+    startNext, skip, playAgain, hostPickWinner, startRPS, startOneSecond, clearPlayers, setRpsRevealed, setMinigameSettings
+  } = useGameState(null, roomCode);
 
   const [cameraTarget, setCameraTarget] = useState(null);
   const [zoomed,       setZoomed]       = useState(false);
@@ -676,15 +1189,57 @@ export default function BracketApp() {
   const [bumperFading, setBumperFading] = useState(false);
   const [showBlackout, setShowBlackout] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [musicVolume,  setMusicVolume]  = useState(1);
   const [sfxVolume,    setSfxVolume]    = useState(1);
   const [randomTiebreaker, setRandomTiebreaker] = useState(false);
+  const [autoAdvanceDelay, setAutoAdvanceDelay] = useState(3);
+  const [minigamesEnabled,       setMinigamesEnabled]       = useState(true);
+  const [minigameAllowRps,       setMinigameAllowRps]       = useState(true);
+  const [minigameAllowOneSecond, setMinigameAllowOneSecond] = useState(true);
+  const [minigameFrequency,      setMinigameFrequency]      = useState("medium");
+  const [showBumpers, setShowBumpers] = useState(true); // seconds; 0 = off
+  const [autoAdvanceRemaining, setAutoAdvanceRemaining] = useState(null);
+  const [chatLog, setChatLog] = useState([]);
+  const chatEndRef = useRef(null);
+  const seenReactionIds = useRef(new Set());
+  const reactionXRef = useRef({});
+
+  // Capture text reactions into persistent chat log
+  useEffect(() => {
+    liveReactions.forEach(r => {
+      if (r.type === "text" && !seenReactionIds.current.has(r.localId)) {
+        seenReactionIds.current.add(r.localId);
+        setChatLog(prev => [...prev.slice(-49), r]);
+      }
+    });
+  }, [liveReactions]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatLog]);
+  const [showUnanimous, setShowUnanimous]   = useState(false);
+  const unanimousKeyRef = useRef(0);
+  const [carouselPage, setCarouselPage]     = useState(0);
+  const [carouselBracketTf, setCarouselBracketTf] = useState({ tx: 0, ty: 0, zoom: 1 });
+  const carouselBracketTfRef   = useRef({ tx: 0, ty: 0, zoom: 1 });
+  const carouselBracketDragRef = useRef(null);
+  const [confettiActive, setConfettiActive] = useState(false);
+  const autoAdvanceTimerRef   = useRef(null);
+  const autoAdvanceCountRef   = useRef(null);
+  const prevChampionRef       = useRef(null);
+  const rpsLingerDataRef    = useRef(null);  // saved tiebreaker data for linger
+  const rpsPhaseActiveRef   = useRef(false); // true while in "rps" phase
+  const rpsPhaseEndTimeRef  = useRef(null);  // linger expiry timestamp (ms)
+  const [, setRpsLingerTick] = useState(0);  // bumped to force re-render when linger expires
 
   // ── Audio management ──
   const menuAudio = useRef(null);
   const gameAudio = useRef(null);
   const endAudio  = useRef(null);
-  const rpsAudio  = useRef(null);
+  const rpsAudio        = useRef(null);
+  const oneSecondAudio  = useRef(null);
   const startSfx  = useRef(null);
   const startAgainSfx  = useRef(null);
   const playerAddSfx   = useRef(null);
@@ -731,7 +1286,8 @@ export default function BracketApp() {
     menuAudio.current = makeLoop(menuSongSrc, 0.6);      // 40% lower
     gameAudio.current = makeLoop(gameSongSrc, 0.3);      // 40% lower
     endAudio.current  = makeLoop(endSongSrc, 0.6);       // 40% lower
-    rpsAudio.current  = makeLoop(rpsBeatSrc, 0.45);      // 40% lower
+    rpsAudio.current         = makeLoop(rpsBeatSrc, 0.45);
+    oneSecondAudio.current   = makeLoop(oneSecondMusicSrc, 0.5);
     // ── Web Audio reverb chain for SFX ──
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     audioCtxRef.current = ctx;
@@ -816,6 +1372,7 @@ export default function BracketApp() {
       gameAudio.current?.pause();
       endAudio.current?.pause();
       rpsAudio.current?.pause();
+      oneSecondAudio.current?.pause();
       audioCtxRef.current?.close();
     };
   }, []);
@@ -829,16 +1386,20 @@ export default function BracketApp() {
       // Play the right track for current phase
       const stop = (a) => { if (a.current) { a.current.pause(); a.current.currentTime = 0; } };
       if (phase === "lobby") {
-        stop(gameAudio); stop(endAudio); stop(rpsAudio);
+        stop(gameAudio); stop(endAudio); stop(rpsAudio); stop(oneSecondAudio);
         menuAudio.current?.play().catch(() => {});
       } else if (phase === "finished" || champion) {
-        stop(menuAudio); stop(gameAudio); stop(rpsAudio);
+        stop(menuAudio); stop(gameAudio); stop(rpsAudio); stop(oneSecondAudio);
         endAudio.current?.play().catch(() => {});
       } else if (phase === "rps") {
-        stop(menuAudio); stop(endAudio); stop(gameAudio);
+        stop(menuAudio); stop(endAudio); stop(gameAudio); stop(oneSecondAudio);
         rpsAudio.current?.play().catch(() => {});
-      } else {
+      } else if (phase === "oneSecond") {
         stop(menuAudio); stop(endAudio); stop(rpsAudio);
+        if (gameAudio.current) gameAudio.current.pause();
+        oneSecondAudio.current?.play().catch(() => {});
+      } else {
+        stop(menuAudio); stop(endAudio); stop(rpsAudio); stop(oneSecondAudio);
         gameAudio.current?.play().catch(() => {});
       }
     };
@@ -852,35 +1413,36 @@ export default function BracketApp() {
     };
   }, [audioUnlocked, phase, champion]);
 
-  // Switch music based on phase (including RPS)
+  // Switch music based on phase (including RPS / One Second)
   useEffect(() => {
     const stop = (a) => { if (a.current) { a.current.pause(); a.current.currentTime = 0; } };
     if (phase === "lobby") {
-      stop(gameAudio); stop(endAudio); stop(rpsAudio);
+      stop(gameAudio); stop(endAudio); stop(rpsAudio); stop(oneSecondAudio);
       menuAudio.current?.play().catch(() => {});
     } else if (phase === "finished" || champion) {
-      stop(menuAudio); stop(gameAudio); stop(rpsAudio);
+      stop(menuAudio); stop(gameAudio); stop(rpsAudio); stop(oneSecondAudio);
       endAudio.current?.play().catch(() => {});
     } else if (phase === "rps") {
-      stop(menuAudio); stop(endAudio); stop(gameAudio);
+      stop(menuAudio); stop(endAudio); stop(gameAudio); stop(oneSecondAudio);
       rpsAudio.current?.play().catch(() => {});
+    } else if (phase === "oneSecond") {
+      stop(menuAudio); stop(endAudio); stop(rpsAudio);
+      if (gameAudio.current) gameAudio.current.pause(); // pause without reset — resumes when oneSecond ends
+      oneSecondAudio.current?.play().catch(() => {});
     } else {
       // playing / tiebreaker
-      stop(menuAudio); stop(endAudio); stop(rpsAudio);
+      stop(menuAudio); stop(endAudio); stop(rpsAudio); stop(oneSecondAudio);
       gameAudio.current?.play().catch(() => {});
     }
   }, [phase, champion]);
 
-  // Play RPS winning choice SFX when result is determined
-  useEffect(() => {
-    if (!tiebreaker?.rps) return;
-    const { result, choice1, choice2 } = tiebreaker.rps;
-    if (!result || result === "draw") return;
-    const winningChoice = result === "p1" ? choice1 : choice2;
+  // Play RPS winning choice SFX — called by BigRpsPanel when the winner is visually revealed
+  const handleRpsWinnerRevealed = useCallback((winningChoice) => {
+    // Signal to phones that the result is now visible on the main screen
+    setRpsRevealed();
     const buf = rpsSfxBufs.current[winningChoice];
     const ctx = audioCtxRef.current;
     if (!buf || !ctx || muted) return;
-    // Pause RPS music right before the SFX
     if (rpsAudio.current) rpsAudio.current.pause();
     const source = ctx.createBufferSource();
     source.buffer = buf;
@@ -890,17 +1452,55 @@ export default function BracketApp() {
     if (zoomDryGain.current) gain.connect(zoomDryGain.current);
     if (zoomConvolver.current) gain.connect(zoomConvolver.current);
     source.start();
-  }, [tiebreaker?.rps?.result]);
+  }, [muted, setRpsRevealed]);
 
   // Play start SFX once on lobby → playing transition; also show blackout so bracket
   // never flashes before the round bumper appears (only on a real game start, not refresh)
   useEffect(() => {
+    if (phase === "lobby") {
+      lastBumperRoundRef.current = null; // reset so next game always triggers bumpers
+    }
     if (prevPhase.current === "lobby" && phase !== "lobby") {
       if (!muted) startSfx.current?.play().catch(() => {});
       if (firebaseBootstrappedRef.current) setShowBlackout(true);
     }
     prevPhase.current = phase;
   }, [phase]); // eslint-disable-line
+
+  // Unanimous detection — flash overlay when all players vote the same way
+  useEffect(() => {
+    if (votedCount < 2 || votedCount < totalPlayers) return;
+    const choices = Object.values(voters);
+    if (choices.length < totalPlayers) return;
+    if (choices.every(c => c === choices[0])) {
+      unanimousKeyRef.current += 1;
+      setShowUnanimous(true);
+      const t = setTimeout(() => setShowUnanimous(false), 2800);
+      return () => { clearTimeout(t); setShowUnanimous(false); };
+    }
+  }, [votedCount]); // eslint-disable-line
+
+  // Confetti — trigger once when champion is first set
+  useEffect(() => {
+    if (champion && !prevChampionRef.current) {
+      setConfettiActive(true);
+      const t = setTimeout(() => setConfettiActive(false), 7000);
+      return () => clearTimeout(t);
+    }
+    prevChampionRef.current = champion;
+  }, [champion]);
+
+  // Final carousel — reset to page 0 when a new game starts
+  useEffect(() => {
+    if (!champion) setCarouselPage(0);
+  }, [champion]);
+
+  // Reset bracket pan/zoom whenever carousel page changes
+  useEffect(() => {
+    const tf = { tx: 0, ty: 0, zoom: 1 };
+    carouselBracketTfRef.current = tf;
+    setCarouselBracketTf(tf);
+  }, [carouselPage]);
 
   // Play PlayerAdd SFX when a new player joins
   useEffect(() => {
@@ -922,7 +1522,7 @@ export default function BracketApp() {
 
   // Sync muted state to all audio objects
   useEffect(() => {
-    [menuAudio, gameAudio, endAudio, rpsAudio, startSfx, startAgainSfx, playerAddSfx, resetPlayersSfx, choiceMadeSfx].forEach((a) => {
+    [menuAudio, gameAudio, endAudio, rpsAudio, oneSecondAudio, startSfx, startAgainSfx, playerAddSfx, resetPlayersSfx, choiceMadeSfx].forEach((a) => {
       if (a.current) a.current.muted = muted;
     });
   }, [muted]);
@@ -969,7 +1569,8 @@ export default function BracketApp() {
     if (menuAudio.current) menuAudio.current.volume = 0.6  * musicVolume;
     if (gameAudio.current) gameAudio.current.volume = 0.3  * musicVolume;
     if (endAudio.current)  endAudio.current.volume  = 0.6  * musicVolume;
-    if (rpsAudio.current)  rpsAudio.current.volume  = 0.45 * musicVolume;
+    if (rpsAudio.current)        rpsAudio.current.volume        = 0.45 * musicVolume;
+    if (oneSecondAudio.current)  oneSecondAudio.current.volume  = 0.5  * musicVolume;
     if (bumperVideoRef.current) bumperVideoRef.current.volume = 0.6 * musicVolume;
   }, [musicVolume, bumperSrc]);
 
@@ -991,6 +1592,16 @@ export default function BracketApp() {
       hostPickWinner(winner);
     }
   }, [phase, tiebreaker?.matchId, randomTiebreaker]); // eslint-disable-line
+
+  // Sync minigame settings into useGameState ref whenever they change
+  useEffect(() => {
+    setMinigameSettings({
+      enabled: minigamesEnabled,
+      allowRps: minigameAllowRps,
+      allowOneSecond: minigameAllowOneSecond,
+      frequency: minigameFrequency,
+    });
+  }, [minigamesEnabled, minigameAllowRps, minigameAllowOneSecond, minigameFrequency]); // eslint-disable-line
 
   // Play zoom SFX (forward for zoom-in, reversed for zoom-out)
   const playZoomSfx = (reversed) => {
@@ -1019,6 +1630,34 @@ export default function BracketApp() {
     resetPlayersSfx.current.play().catch(() => {});
     clearPlayers();
   };
+
+  // Auto-advance to next match after a configurable delay
+  useEffect(() => {
+    clearTimeout(autoAdvanceTimerRef.current);
+    clearInterval(autoAdvanceCountRef.current);
+    setAutoAdvanceRemaining(null);
+
+    if (phase !== "playing" || currentMatch || champion || autoAdvanceDelay === 0 || bumperSrc) return;
+
+    let remaining = autoAdvanceDelay;
+    setAutoAdvanceRemaining(remaining);
+
+    autoAdvanceCountRef.current = setInterval(() => {
+      remaining -= 1;
+      setAutoAdvanceRemaining(remaining);
+      if (remaining <= 0) clearInterval(autoAdvanceCountRef.current);
+    }, 1000);
+
+    autoAdvanceTimerRef.current = setTimeout(() => {
+      setAutoAdvanceRemaining(null);
+      startNext();
+    }, autoAdvanceDelay * 1000);
+
+    return () => {
+      clearTimeout(autoAdvanceTimerRef.current);
+      clearInterval(autoAdvanceCountRef.current);
+    };
+  }, [phase, currentMatch, champion, autoAdvanceDelay, bumperSrc]); // eslint-disable-line
 
   const liveMatch = currentMatch && bracket
     ? allMatches(bracket).find((m) => m.id === currentMatch)
@@ -1132,17 +1771,21 @@ export default function BracketApp() {
     const isNewRound = !last
       || (curr.isFinal !== last.isFinal)
       || (!curr.isFinal && curr.rIdx !== last.rIdx);
-    if (!isNewRound) return;
+    if (!isNewRound) { setShowBlackout(false); return; }
+    // Always update lastBumperRoundRef so toggling bumpers back on doesn't replay old rounds
+    lastBumperRoundRef.current = { rIdx: curr.rIdx, isFinal: curr.isFinal };
+    // Suppress bumper if we just resolved a pre-match challenge (doubleVoter is set)
+    if (doubleVoter) { setShowBlackout(false); return; }
+    if (!showBumpers) { setShowBlackout(false); return; }
     const src = pickBumperSrc(bracket, curr.rIdx, curr.isFinal);
     if (src) {
-      lastBumperRoundRef.current = { rIdx: curr.rIdx, isFinal: curr.isFinal };
       bumperFadingRef.current = false;
       setBumperFading(false);
       setBumperSrc(src);
     } else {
-      setShowBlackout(false); // no bumper for this round, clear the blackout
+      setShowBlackout(false);
     }
-  }, [currentMatch, phase]); // eslint-disable-line
+  }, [currentMatch, phase, showBumpers]); // eslint-disable-line
 
   // Auto-dismiss bumper after fade animation completes (~8 frames at 12fps)
   useEffect(() => {
@@ -1262,14 +1905,21 @@ export default function BracketApp() {
           playsInline
           style={s.titleVideo}
         />
-        <div style={{ position: "absolute", top: 16, right: 16, zIndex: 10, display: "flex", gap: 8 }}>
-          <button className="reset-btn-outer" onClick={handleClearPlayers} style={s.clearBtnSmall}>
+        {/* BracketBot — full-screen z100; lobby UI at z150 sits above it */}
+        <BracketBot volume={sfxVolume} />
+        <div style={{ position: "absolute", top: 16, right: 16, zIndex: 150, display: "flex", gap: 8, pointerEvents: "none" }}>
+          <button className="reset-btn-outer" onClick={handleClearPlayers} style={{ ...s.clearBtnSmall, pointerEvents: "auto" }}>
             <span className="reset-arrow" style={{ display: "inline-flex", width: 16, height: 16 }}><IconReset /></span>
             {" RESET"}
           </button>
-          <button className="settings-btn-outer" style={s.settingsBtn} onClick={() => setShowSettings(true)} title="Settings">
+          <button className="settings-btn-outer" style={{ ...s.settingsBtn, pointerEvents: "auto" }} onClick={() => setShowSettings(true)} title="Settings">
             <span className="settings-gear" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}><IconGear /></span>
           </button>
+          {globalStats && globalStats.length > 0 && (
+            <button style={{ ...s.settingsBtn, pointerEvents: "auto" }} onClick={() => setShowHallOfFame(true)} title="Hall of Fame">
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}><IconTrophy /></span>
+            </button>
+          )}
         </div>
         <div style={s.lobbyContentWrap}>
           <div style={s.lobbyInfo}>
@@ -1278,17 +1928,30 @@ export default function BracketApp() {
             </div>
             {Object.keys(playerNames).length > 0 && (
               <div style={s.lobbyNamesList}>
-                {Object.values(playerNames).map((name, i) => (
-                  <span key={i} style={s.lobbyNameTag}>{name}</span>
-                ))}
+                {Object.entries(playerNames).map(([pid, name], i) => {
+                  const color = PLAYER_COLORS[(playerColors?.[pid] ?? i) % PLAYER_COLORS.length];
+                  return (
+                    <span key={pid} className="anim-nameTagIn" style={{
+                      ...s.lobbyNameTag,
+                      animationDelay: `${i * 60}ms`,
+                      color,
+                      borderColor: color,
+                      boxShadow: `0 0 8px ${color}44`,
+                    }}>{name}</span>
+                  );
+                })}
               </div>
             )}
-            <div style={s.lobbyUrl}>
-              <span style={{ color: "#c8f55a" }}>JOIN AT: {window.location.host}/vote</span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 4 }}>
+              <div style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 4, color: "#6a8a6a" }}>ROOM CODE</div>
+              <div style={{ fontFamily: "'PT Mono',monospace", fontSize: 36, fontWeight: 700, letterSpacing: 10, color: "#c8f55a", lineHeight: 1 }}>{roomCode}</div>
+              <div style={s.lobbyUrl}>
+                <span style={{ color: "#7a9a7a" }}>{window.location.host}/vote</span>
+              </div>
             </div>
-            <div style={{ padding: 6, background: "#0a140a", border: "1px solid #1a2e1a", marginTop: 8 }}>
+            <div style={{ padding: 6, background: "#0a140a", border: "1px solid #1a2e1a", marginTop: 4 }}>
               <QRCodeSVG
-                value={`${window.location.origin}/vote`}
+                value={`${window.location.origin}/vote?room=${roomCode}`}
                 size={60}
                 bgColor="#0a140a"
                 fgColor="#c8f55a"
@@ -1300,6 +1963,49 @@ export default function BracketApp() {
             </div>
           </div>
         </div>
+
+        {/* Hall of Fame popup */}
+        {showHallOfFame && (
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}
+            onClick={() => setShowHallOfFame(false)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: "#060e06", border: "1px solid #1a2e1a", borderRadius: 6,
+                padding: "24px 28px", minWidth: 260, maxWidth: 340,
+                animation: "settings-open 0.15s ease-out",
+              }}
+            >
+              <div style={{ fontSize: 11, letterSpacing: 5, color: "#c8f55a", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                <IconTrophy size={14} /> ALL-TIME CHAMPIONS
+              </div>
+              {globalStats.slice(0, 15).map((entry, i) => (
+                <div key={entry.name} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "5px 0",
+                  borderBottom: i < Math.min(globalStats.length, 15) - 1 ? "1px solid #0d1a0d" : "none",
+                }}>
+                  <span style={{ fontSize: 11, color: i === 0 ? "#c8f55a" : "#6a8a6a", width: 20, textAlign: "right", flexShrink: 0 }}>
+                    {i === 0 ? "★" : `${i + 1}.`}
+                  </span>
+                  <span style={{ fontSize: 13, letterSpacing: 1, color: i === 0 ? "#c8f55a" : "#7a9a7a", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {entry.name}
+                  </span>
+                  <span style={{ fontSize: 11, letterSpacing: 1, color: "#7a9a7a", flexShrink: 0 }}>
+                    ×{entry.wins}
+                  </span>
+                </div>
+              ))}
+              <button onClick={() => setShowHallOfFame(false)} style={{
+                marginTop: 18, width: "100%", padding: "8px 0", fontFamily: "'PT Mono',monospace",
+                fontSize: 10, letterSpacing: 4, color: "#7a9a7a", background: "transparent",
+                border: "1px solid #1a2e1a", borderRadius: 4, cursor: "pointer",
+              }}>CLOSE</button>
+            </div>
+          </div>
+        )}
 
         {/* Settings overlay */}
         {showSettings && (
@@ -1344,7 +2050,7 @@ export default function BracketApp() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#2a4a2a" }}>MUSIC</span>
+                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>MUSIC</span>
                   <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 2, color: "#c8f55a" }}>
                     {Math.round(musicVolume * 100)}%
                   </span>
@@ -1354,7 +2060,7 @@ export default function BracketApp() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#2a4a2a" }}>SFX</span>
+                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>SFX</span>
                   <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 2, color: "#c8f55a" }}>
                     {Math.round(sfxVolume * 100)}%
                   </span>
@@ -1363,7 +2069,7 @@ export default function BracketApp() {
                   value={sfxVolume} onChange={e => setSfxVolume(Number(e.target.value))} />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#2a4a2a" }}>TIEBREAKER</span>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>TIEBREAKER</span>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     style={{
@@ -1387,6 +2093,94 @@ export default function BracketApp() {
                   >RANDOM</button>
                 </div>
               </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>AUTO-ADVANCE</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[0, 2, 3, 5].map(sec => (
+                    <button key={sec}
+                      style={{
+                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                        background: autoAdvanceDelay === sec ? "#0f1f0f" : "#0a140a",
+                        color: autoAdvanceDelay === sec ? "#c8f55a" : "#2a5a2a",
+                        border: autoAdvanceDelay === sec ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                      }}
+                      onClick={() => setAutoAdvanceDelay(sec)}
+                    >
+                      {sec === 0 ? "OFF" : `${sec}S`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>ROUND VIDEOS</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[true, false].map(on => (
+                    <button key={String(on)}
+                      style={{
+                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                        background: showBumpers === on ? "#0f1f0f" : "#0a140a",
+                        color: showBumpers === on ? "#c8f55a" : "#2a5a2a",
+                        border: showBumpers === on ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                      }}
+                      onClick={() => setShowBumpers(on)}
+                    >
+                      {on ? "ON" : "OFF"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Pre-match minigames */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>PRE-MATCH MINIGAMES</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[true, false].map(on => (
+                    <button key={String(on)}
+                      style={{
+                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                        background: minigamesEnabled === on ? "#0f1f0f" : "#0a140a",
+                        color: minigamesEnabled === on ? "#c8f55a" : "#2a5a2a",
+                        border: minigamesEnabled === on ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                      }}
+                      onClick={() => setMinigamesEnabled(on)}
+                    >{on ? "ON" : "OFF"}</button>
+                  ))}
+                </div>
+                <div style={{ opacity: minigamesEnabled ? 1 : 0.3, pointerEvents: minigamesEnabled ? "auto" : "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>INCLUDE</span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[["rps", "RPS", minigameAllowRps, setMinigameAllowRps], ["os", "ONE SEC", minigameAllowOneSecond, setMinigameAllowOneSecond]].map(([key, label, val, setter]) => (
+                      <button key={key}
+                        style={{
+                          flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                          letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                          background: val ? "#0f1f0f" : "#0a140a",
+                          color: val ? "#c8f55a" : "#2a5a2a",
+                          border: val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                        }}
+                        onClick={() => setter(v => !v)}
+                      >{label}</button>
+                    ))}
+                  </div>
+                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>FREQUENCY</span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[["low", "LOW"], ["medium", "MED"], ["high", "HIGH"]].map(([val, label]) => (
+                      <button key={val}
+                        style={{
+                          flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                          letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                          background: minigameFrequency === val ? "#0f1f0f" : "#0a140a",
+                          color: minigameFrequency === val ? "#c8f55a" : "#2a5a2a",
+                          border: minigameFrequency === val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                        }}
+                        onClick={() => setMinigameFrequency(val)}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1398,12 +2192,29 @@ export default function BracketApp() {
   if (!bracket) {
     return (
       <div style={s.root}>
-        <div style={{ color: "#2a4a2a", letterSpacing: 2, fontSize: 14 }}>
+        <div style={{ color: "#6a8a6a", letterSpacing: 2, fontSize: 14 }}>
           Loading…
         </div>
       </div>
     );
   }
+
+  // ── RPS panel linger — computed synchronously during render so the panel never
+  //    unmounts between phase leaving "rps" and the linger window opening.
+  //    (useEffect fires after render, which would let the component unmount for
+  //    one frame and reset animPhase inside BigRpsPanel back to "waiting".)
+  if (phase === "rps") {
+    rpsPhaseActiveRef.current  = true;
+    rpsPhaseEndTimeRef.current = null;
+    if (tiebreaker?.rps) rpsLingerDataRef.current = tiebreaker;
+  } else if (rpsPhaseActiveRef.current && !rpsPhaseEndTimeRef.current) {
+    // Phase JUST left "rps" in this render — open the linger window immediately
+    rpsPhaseActiveRef.current  = false;
+    rpsPhaseEndTimeRef.current = Date.now() + 1100;
+    setTimeout(() => setRpsLingerTick(n => n + 1), 1150);
+  }
+  const showRpsPanel = phase === "rps" ||
+    !!(rpsPhaseEndTimeRef.current && Date.now() < rpsPhaseEndTimeRef.current);
 
   // ── Playing / Finished ──
   return (
@@ -1429,7 +2240,7 @@ export default function BracketApp() {
         <div style={s.voteUrl}>
           VOTE: <span style={{ color: "#c8f55a" }}>{window.location.host}/vote</span>
         </div>
-        <button
+        {!champion && <button
           style={s.cameraBtn}
           onClick={toggleCameraMode}
           title={cameraMode ? "Disable auto-camera" : "Enable auto-camera"}
@@ -1449,7 +2260,7 @@ export default function BracketApp() {
               boxShadow: cameraMode ? "0 0 4px #c8f55a88" : "none",
             }} />
           </div>
-        </button>
+        </button>}
         <button className="settings-btn-outer" style={s.settingsBtn} onClick={() => setShowSettings(true)} title="Settings"><span className="settings-gear" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20 }}><IconGear size={20} /></span></button>
         <ExitButton onExit={handlePlayAgain} style={s.exitBtn} />
       </div>
@@ -1458,103 +2269,231 @@ export default function BracketApp() {
       {Object.keys(playerNames).length > 0 && !champion && (
         <div style={s.playerListBox}>
           <div style={s.playerListTitle}>PLAYERS</div>
-          {Object.values(playerNames).map((name, i) => (
-            <div key={i} style={s.playerListItem}>{name}</div>
-          ))}
+          {Object.entries(playerNames).map(([pid, name], i) => {
+            const color = PLAYER_COLORS[(playerColors?.[pid] ?? i) % PLAYER_COLORS.length];
+            return (
+              <div key={pid} style={{ ...s.playerListItem, color, display: "flex", alignItems: "center", gap: 6 }}>
+                <PlayerRobot color={color} size={42} volume={sfxVolume} />
+                <span style={{ lineHeight: 1, alignSelf: "center", position: "relative", top: 5 }}>{name}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* BracketBot — top-right corner box (hidden on champion screen) */}
+      {!champion && (
+        <div style={{
+          position: "absolute", top: 68, right: 16, zIndex: 20,
+          border: "1px solid #1a2e1a", background: "#060e06",
+          borderRadius: 4, overflow: "hidden",
+        }}>
+          <BracketBot width={220} height={124} src={bracketBotMapRiv} volume={sfxVolume} />
         </div>
       )}
 
       {champion && (
-        <div style={s.championRow}>
+        <div className="anim-champReveal" style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={s.champion}>
             {"\uD83C\uDFC6"}&nbsp; CHAMPION &mdash;&nbsp;
-            <span style={{ color: "#c8f55a", textShadow: "0 0 24px #c8f55a" }}>{champion}</span>
+            <span className="anim-glowPulse" style={{ color: "#c8f55a", textShadow: "0 0 24px #c8f55a" }}>{champion}</span>
           </div>
-          <button style={s.playAgainBtn} onClick={handlePlayAgain}>
-            {"\u21BA"} PLAY AGAIN
-          </button>
-        </div>
-      )}
-
-      {champion && scores && Object.keys(scores).length > 0 && (
-        <div style={s.leaderboard}>
-          <div style={s.leaderboardTitle}>LEADERBOARD</div>
-          {Object.entries(scores)
-            .map(([pid, sc]) => ({
-              name: playerNames[pid] || "???",
-              pct: sc.total > 0 ? Math.round((sc.correct / sc.total) * 100) : 0,
-              correct: sc.correct,
-              total: sc.total,
-            }))
-            .sort((a, b) => b.pct - a.pct)
-            .map((entry, i) => (
-              <div key={i} style={s.leaderboardRow}>
-                <span style={s.leaderboardRank}>{i + 1}.</span>
-                <span style={s.leaderboardName}>{entry.name}</span>
-                <span style={s.leaderboardPct}>{entry.pct}%</span>
-                <span style={s.leaderboardDetail}>{entry.correct}/{entry.total}</span>
-              </div>
-            ))
-          }
         </div>
       )}
 
       {champion && bracket && (() => {
+        // -- vote totals data --
         const voteTotals = {};
         allMatches(bracket).forEach((m) => {
           const [c0, c1] = m.contenders;
           if (c0) voteTotals[c0] = (voteTotals[c0] || 0) + ((m.votes && m.votes[c0]) || 0);
           if (c1) voteTotals[c1] = (voteTotals[c1] || 0) + ((m.votes && m.votes[c1]) || 0);
         });
-        const sorted = Object.entries(voteTotals)
-          .sort((a, b) => b[1] - a[1]);
+        const sorted = Object.entries(voteTotals).sort((a, b) => b[1] - a[1]);
         const half = Math.ceil(sorted.length / 2);
         const col1 = sorted.slice(0, half);
         const col2 = sorted.slice(half);
+
+        // -- leaderboard data --
+        const lbEntries = scores && Object.keys(scores).length > 0
+          ? Object.entries(scores)
+              .map(([pid, sc]) => ({
+                pid,
+                name: playerNames[pid] || "???",
+                pct: sc.total > 0 ? Math.round((sc.correct / sc.total) * 100) : 0,
+                correct: sc.correct,
+                total: sc.total,
+              }))
+              .sort((a, b) => b.pct - a.pct)
+          : [];
+
+        // -- bracket scale --
+        const bLayout = getLayout(bracket);
+        const bContainerW = Math.min(window.innerWidth * 0.88, 1100);
+        const bContainerH = Math.round(window.innerHeight * 0.58);
+        const bScale = Math.min(bContainerW / bLayout.totalW, bContainerH / SVG_H);
+        const bRenderW = bLayout.totalW * bScale;
+        const bRenderH = SVG_H * bScale;
+
+        const pageTitles = ["OPTIONS BY TOTAL VOTES", "USER LEADERBOARD", "FILLED BRACKET"];
+        const arrowBtn = {
+          background: "transparent", border: "1px solid #1a2e1a", color: "#c8f55a",
+          fontSize: 28, width: 36, height: 36, display: "flex", alignItems: "center",
+          justifyContent: "center", cursor: "pointer", borderRadius: 3,
+          fontFamily: "sans-serif", lineHeight: 1, padding: 0, flexShrink: 0,
+        };
+
         return (
-          <div style={{ ...s.leaderboard, maxWidth: 680 }}>
-            <div style={s.leaderboardTitle}>OPTIONS BY TOTAL VOTES</div>
-            <div style={s.twoColGrid}>
-              <div>
-                {col1.map(([name, votes], i) => (
-                  <div key={i} style={s.leaderboardRow}>
-                    <span style={s.leaderboardRank}>{i + 1}.</span>
-                    <span style={s.leaderboardName}>{name}</span>
-                    <span style={s.leaderboardPct}>{votes}</span>
-                  </div>
-                ))}
+          <div style={{ width: "100%", maxWidth: bContainerW + 80, marginBottom: 0 }}>
+            {/* Nav row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <button style={arrowBtn} onClick={() => setCarouselPage(p => (p + 2) % 3)}>&#8249;</button>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                <div style={{ fontSize: 10, letterSpacing: 4, color: "#4a7a40" }}>{pageTitles[carouselPage]}</div>
+                <div style={{ display: "flex", gap: 7 }}>
+                  {[0, 1, 2].map(i => (
+                    <button key={i} onClick={() => setCarouselPage(i)} style={{
+                      width: 8, height: 8, borderRadius: "50%", border: "none", cursor: "pointer", padding: 0,
+                      background: i === carouselPage ? "#c8f55a" : "#1a2e1a",
+                      boxShadow: i === carouselPage ? "0 0 6px #c8f55a" : "none",
+                      transition: "background 0.25s, box-shadow 0.25s",
+                    }} />
+                  ))}
+                </div>
               </div>
-              <div>
-                {col2.map(([name, votes], i) => (
-                  <div key={i} style={s.leaderboardRow}>
-                    <span style={s.leaderboardRank}>{half + i + 1}.</span>
-                    <span style={s.leaderboardName}>{name}</span>
-                    <span style={s.leaderboardPct}>{votes}</span>
+              <button style={arrowBtn} onClick={() => setCarouselPage(p => (p + 1) % 3)}>&#8250;</button>
+            </div>
+
+            {/* Page content */}
+            <div style={{ border: "1px solid #1a2e1a", background: "#080f08", padding: carouselPage === 2 ? "12px 16px" : "12px 16px", minHeight: carouselPage === 2 ? bContainerH + 24 : 280, overflow: "hidden" }}>
+              {carouselPage === 0 && (
+                <div style={s.twoColGrid}>
+                  <div>
+                    {col1.map(([name, votes], i) => (
+                      <div key={i} style={s.leaderboardRow}>
+                        <span style={s.leaderboardRank}>{i + 1}.</span>
+                        <span style={s.leaderboardName}>{name}</span>
+                        <span style={s.leaderboardPct}>{votes}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                  <div>
+                    {col2.map(([name, votes], i) => (
+                      <div key={i} style={s.leaderboardRow}>
+                        <span style={s.leaderboardRank}>{half + i + 1}.</span>
+                        <span style={s.leaderboardName}>{name}</span>
+                        <span style={s.leaderboardPct}>{votes}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {carouselPage === 1 && (
+                lbEntries.length > 0
+                  ? lbEntries.map((entry, i) => (
+                      <div key={i} style={s.leaderboardRow}>
+                        <span style={s.leaderboardRank}>{i + 1}.</span>
+                        <span style={{ ...s.leaderboardName, color: PLAYER_COLORS[(playerColors?.[entry.pid] ?? i) % PLAYER_COLORS.length] }}>{entry.name}</span>
+                        <span style={s.leaderboardPct}>{entry.pct}%</span>
+                        <span style={s.leaderboardDetail}>{entry.correct}/{entry.total}</span>
+                      </div>
+                    ))
+                  : <div style={{ color: "#6a8a6a", textAlign: "center", paddingTop: 60, letterSpacing: 3, fontSize: 12 }}>NO SCORES RECORDED</div>
+              )}
+
+              {carouselPage === 2 && (
+                <div
+                  style={{ width: bContainerW, height: bContainerH, overflow: "hidden", position: "relative", margin: "0 auto", cursor: carouselBracketDragRef.current ? "grabbing" : "grab", userSelect: "none" }}
+                  onWheel={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const cx = e.clientX - rect.left;
+                    const cy = e.clientY - rect.top;
+                    const prev = carouselBracketTfRef.current;
+                    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+                    const newZoom = Math.min(Math.max(prev.zoom * factor, 1), 8);
+                    const newTf = newZoom === 1 ? { zoom: 1, tx: 0, ty: 0 } : (() => {
+                      const baseX = (bContainerW - bRenderW) / 2;
+                      const baseY = (bContainerH - bRenderH) / 2;
+                      const svgX = (cx - baseX - prev.tx) / (bScale * prev.zoom);
+                      const svgY = (cy - baseY - prev.ty) / (bScale * prev.zoom);
+                      return { zoom: newZoom, tx: cx - baseX - svgX * bScale * newZoom, ty: cy - baseY - svgY * bScale * newZoom };
+                    })();
+                    carouselBracketTfRef.current = newTf;
+                    setCarouselBracketTf(newTf);
+                  }}
+                  onMouseDown={(e) => { e.preventDefault(); carouselBracketDragRef.current = { startX: e.clientX, startY: e.clientY, startTx: carouselBracketTfRef.current.tx, startTy: carouselBracketTfRef.current.ty }; }}
+                  onMouseMove={(e) => {
+                    if (!carouselBracketDragRef.current) return;
+                    const { startX, startY, startTx, startTy } = carouselBracketDragRef.current;
+                    const newTf = { ...carouselBracketTfRef.current, tx: startTx + e.clientX - startX, ty: startTy + e.clientY - startY };
+                    carouselBracketTfRef.current = newTf;
+                    setCarouselBracketTf(newTf);
+                  }}
+                  onMouseUp={() => { carouselBracketDragRef.current = null; }}
+                  onMouseLeave={() => { carouselBracketDragRef.current = null; }}
+                  onDoubleClick={() => { const tf = { tx: 0, ty: 0, zoom: 1 }; carouselBracketTfRef.current = tf; setCarouselBracketTf(tf); }}
+                >
+                  <div style={{ transformOrigin: "0 0", transform: `translate(${(bContainerW - bRenderW) / 2 + carouselBracketTf.tx}px, ${(bContainerH - bRenderH) / 2 + carouselBracketTf.ty}px) scale(${bScale * carouselBracketTf.zoom})` }}>
+                    <BracketSVG bracket={bracket} currentMatchId={null} zoomed={false} />
+                  </div>
+                  <div style={{ position: "absolute", bottom: 6, right: 8, fontSize: 9, letterSpacing: 2, color: "#6a8a6a" }}>SCROLL TO ZOOM · DRAG TO PAN · DBL-CLICK TO RESET</div>
+                </div>
+              )}
+            </div>
+
+            {/* Play Again — centered below carousel */}
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+              <button style={s.playAgainBtn} onClick={handlePlayAgain}>{"\u21BA"} PLAY AGAIN</button>
             </div>
           </div>
         );
       })()}
 
-      {(phase === "tiebreaker" || phase === "rps" || phase === "oneSecond") && (
-        <TiebreakerPanel phase={phase} tiebreaker={tiebreaker} isHost={isHost}
+      {phase === "tiebreaker" && (
+        <TiebreakerPanel tiebreaker={tiebreaker} isHost={isHost}
           hostPickWinner={hostPickWinner} startRPS={startRPS} startOneSecond={startOneSecond}
-          playerNames={playerNames} />
+          voters={voters} playerColors={playerColors} />
       )}
 
-      {liveMatch && !champion && phase !== "tiebreaker" && phase !== "rps" && phase !== "oneSecond" && (
-        <MatchStatus match={liveMatch} votedCount={votedCount} totalPlayers={totalPlayers} />
+      {doubleVoter && liveMatch && !champion && !showRpsPanel && phase !== "tiebreaker" && phase !== "rps" && phase !== "oneSecond" && (
+        <div style={{
+          position: "absolute", top: 62, left: "50%", transform: "translateX(-50%)",
+          zIndex: 30, background: "#1a2e00", border: "1px solid #c8f55a",
+          borderRadius: 20, padding: "4px 16px", fontSize: 11, letterSpacing: 3,
+          color: "#c8f55a", textShadow: "0 0 10px #c8f55a88",
+          boxShadow: "0 0 12px #c8f55a33", whiteSpace: "nowrap",
+        }}>
+          ⚡ {playerNames[doubleVoter] || "?"} VOTES DOUBLE
+        </div>
+      )}
+      {liveMatch && !champion && !showRpsPanel && phase !== "tiebreaker" && phase !== "rps" && phase !== "oneSecond" && (
+        <MatchStatus
+          match={liveMatch} votedCount={votedCount} totalPlayers={totalPlayers}
+          voters={voters} playerNames={playerNames} playerColors={playerColors}
+          matchNote={matchNote} setMatchNote={setMatchNote} isHost={isHost}
+        />
       )}
 
       {!currentMatch && !champion && (
         <div style={s.hint}>
-          <button style={s.startBtn} onClick={startNext}>{"\u25B6"} START NEXT MATCH</button>
+          <button
+            style={s.startBtn}
+            onClick={() => {
+              clearTimeout(autoAdvanceTimerRef.current);
+              clearInterval(autoAdvanceCountRef.current);
+              setAutoAdvanceRemaining(null);
+              startNext();
+            }}
+          >
+            {autoAdvanceRemaining != null
+              ? `▶ NEXT IN ${autoAdvanceRemaining}…`
+              : "▶ START NEXT MATCH"}
+          </button>
         </div>
       )}
 
-      {liveMatch && !champion && (
+      {liveMatch && !champion && !showRpsPanel && phase !== "rps" && phase !== "oneSecond" && (
         <div style={s.hint}>
           <button style={Object.assign({}, s.startBtn, { fontSize: 10, padding: "6px 16px", opacity: 0.4 })}
             onClick={skip}>
@@ -1563,8 +2502,22 @@ export default function BracketApp() {
         </div>
       )}
 
-      {/* Camera viewport */}
-      <div
+      {/* Big tiebreaker panels — replace the bracket map */}
+      {showRpsPanel && rpsLingerDataRef.current && (
+        <BigRpsPanel
+          tiebreaker={phase === "rps" && tiebreaker?.rps ? tiebreaker : rpsLingerDataRef.current}
+          playerNames={playerNames}
+          playerColors={playerColors}
+          onWinnerRevealed={handleRpsWinnerRevealed}
+          onDrawRevealed={setRpsRevealed}
+          preMatch={!!(phase === "rps" && tiebreaker?.rps ? tiebreaker?.preMatch : rpsLingerDataRef.current?.preMatch)} />
+      )}
+      {phase === "oneSecond" && tiebreaker?.oneSecond && (
+        <BigOneSecondPanel tiebreaker={tiebreaker} playerNames={playerNames} playerColors={playerColors} preMatch={!!tiebreaker?.preMatch} />
+      )}
+
+      {/* Camera viewport — hidden during big tiebreaker panels and on champion screen */}
+      {!champion && !showRpsPanel && phase !== "oneSecond" && <div
         style={{ ...s.viewport, background: "#060e06", userSelect: "none" }}
         ref={viewportRef}
         onMouseDown={handleMouseDown}
@@ -1590,7 +2543,7 @@ export default function BracketApp() {
             <BracketSVG bracket={bracket} currentMatchId={currentMatch} zoomed={cameraMode && zoomed} />
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Round bumper overlay — also covers the bracket during the gap between game-start and bumper load */}
       {(bumperSrc || showBlackout) && (
@@ -1665,6 +2618,11 @@ export default function BracketApp() {
           onClick={() => setShowSettings(false)}
         >
           <style>{`
+            @keyframes settings-gear-spin {
+              from { transform: rotate(0deg); }
+              to   { transform: rotate(360deg); }
+            }
+            .settings-header-gear { animation: settings-gear-spin 2.5s linear infinite; }
             .s-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
               background: #1a2e1a; outline: none; border-radius: 2px; cursor: pointer; }
             .s-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px;
@@ -1682,8 +2640,9 @@ export default function BracketApp() {
           >
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 12, letterSpacing: 4, color: "#c8f55a" }}>
-                ⚙ SETTINGS
+              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 12, letterSpacing: 4, color: "#c8f55a", display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="settings-header-gear" style={{ display: "inline-flex", width: 16, height: 16 }}><IconGear /></span>
+                SETTINGS
               </span>
               <button
                 style={{ background: "none", border: "none", color: "#c8f55a", cursor: "pointer", fontSize: 16, fontFamily: "'PT Mono',monospace" }}
@@ -1694,7 +2653,7 @@ export default function BracketApp() {
             {/* Music Volume */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#2a4a2a" }}>MUSIC</span>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>MUSIC</span>
                 <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 2, color: "#c8f55a" }}>
                   {Math.round(musicVolume * 100)}%
                 </span>
@@ -1710,7 +2669,7 @@ export default function BracketApp() {
             {/* SFX Volume */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#2a4a2a" }}>SFX</span>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>SFX</span>
                 <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 2, color: "#c8f55a" }}>
                   {Math.round(sfxVolume * 100)}%
                 </span>
@@ -1725,7 +2684,7 @@ export default function BracketApp() {
 
             {/* Tiebreaker toggle */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#2a4a2a" }}>TIEBREAKER</span>
+              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>TIEBREAKER</span>
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   style={{
@@ -1753,9 +2712,151 @@ export default function BracketApp() {
                 </button>
               </div>
             </div>
+
+            {/* Auto-advance delay */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>AUTO-ADVANCE</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[0, 2, 3, 5].map(sec => (
+                  <button key={sec}
+                    style={{
+                      flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                      letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                      background: autoAdvanceDelay === sec ? "#0f1f0f" : "#0a140a",
+                      color: autoAdvanceDelay === sec ? "#c8f55a" : "#2a5a2a",
+                      border: autoAdvanceDelay === sec ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                    }}
+                    onClick={() => setAutoAdvanceDelay(sec)}
+                  >
+                    {sec === 0 ? "OFF" : `${sec}S`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Pre-match minigames */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>PRE-MATCH MINIGAMES</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[true, false].map(on => (
+                  <button key={String(on)}
+                    style={{
+                      flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                      letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                      background: minigamesEnabled === on ? "#0f1f0f" : "#0a140a",
+                      color: minigamesEnabled === on ? "#c8f55a" : "#2a5a2a",
+                      border: minigamesEnabled === on ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                    }}
+                    onClick={() => setMinigamesEnabled(on)}
+                  >{on ? "ON" : "OFF"}</button>
+                ))}
+              </div>
+              <div style={{ opacity: minigamesEnabled ? 1 : 0.3, pointerEvents: minigamesEnabled ? "auto" : "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>INCLUDE</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[["rps", "RPS", minigameAllowRps, setMinigameAllowRps], ["os", "ONE SEC", minigameAllowOneSecond, setMinigameAllowOneSecond]].map(([key, label, val, setter]) => (
+                    <button key={key}
+                      style={{
+                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                        background: val ? "#0f1f0f" : "#0a140a",
+                        color: val ? "#c8f55a" : "#2a5a2a",
+                        border: val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                      }}
+                      onClick={() => setter(v => !v)}
+                    >{label}</button>
+                  ))}
+                </div>
+                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>FREQUENCY</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[["low", "LOW"], ["medium", "MED"], ["high", "HIGH"]].map(([val, label]) => (
+                    <button key={val}
+                      style={{
+                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
+                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
+                        background: minigameFrequency === val ? "#0f1f0f" : "#0a140a",
+                        color: minigameFrequency === val ? "#c8f55a" : "#2a5a2a",
+                        border: minigameFrequency === val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
+                      }}
+                      onClick={() => setMinigameFrequency(val)}
+                    >{label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
+
+
+      {/* Unanimous flash overlay */}
+      {showUnanimous && (
+        <div key={unanimousKeyRef.current} style={{
+          position: "fixed", inset: 0, zIndex: 190, pointerEvents: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div style={{
+            fontFamily: "'PT Mono', monospace",
+            fontSize: 68, fontWeight: "bold", letterSpacing: 16,
+            color: "#c8f55a",
+            textShadow: "0 0 60px #c8f55a, 0 0 120px #c8f55a55",
+            animation: "unanimousFlash 2.8s ease-in-out both",
+          }}>
+            UNANIMOUS
+          </div>
+        </div>
+      )}
+
+      {/* Floating icon reactions — random X within middle 60% of screen */}
+      {liveReactions.filter(r => r.type !== "text").map(r => {
+        if (!reactionXRef.current[r.localId]) {
+          reactionXRef.current[r.localId] = 20 + Math.random() * 60;
+        }
+        const xPct = reactionXRef.current[r.localId];
+        const colorIdx = (playerColors?.[r.pid] ?? 0) % PLAYER_COLORS.length;
+        const color = PLAYER_COLORS[colorIdx];
+        return (
+          <div key={r.localId} className="anim-reactionFloat" style={{
+            position: "fixed", bottom: 100, left: `${xPct}vw`,
+            zIndex: 600, pointerEvents: "none",
+          }}>
+            <ReactionIcon type={r.type} size={r.type === "hourglass" ? 44 : 88} color={color} />
+          </div>
+        );
+      })}
+
+      {/* Persistent chat log — lower-left */}
+      {chatLog.length > 0 && (
+        <div style={{
+          position: "fixed", bottom: 8, left: 8, zIndex: 600, pointerEvents: "none",
+          width: 320, maxHeight: 220, overflowY: "auto",
+          display: "flex", flexDirection: "column", gap: 2,
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 20%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 20%)",
+        }}>
+          {chatLog.map(r => {
+            const colorIdx = (playerColors?.[r.pid] ?? 0) % PLAYER_COLORS.length;
+            const color = PLAYER_COLORS[colorIdx];
+            const name = playerNames?.[r.pid] || "?";
+            return (
+              <div key={r.localId} style={{
+                fontFamily: "'PT Mono', monospace", fontSize: 13, lineHeight: 1.4,
+                background: "rgba(6,14,6,0.7)", borderRadius: 4, padding: "2px 8px",
+                whiteSpace: "pre-wrap", wordBreak: "break-word",
+              }}>
+                <span style={{ color, fontWeight: "bold" }}>{name}: </span>
+                <span style={{ color: "#c8f55a" }}>{r.text}</span>
+              </div>
+            );
+          })}
+          <div ref={chatEndRef} />
+        </div>
+      )}
+
+      {/* Confetti on champion reveal */}
+      <Confetti active={confettiActive} />
+
+
     </div>
   );
 }
@@ -1794,12 +2895,13 @@ const s = {
     maxWidth: 800,
     flex: 1,
     position: "relative",
-    zIndex: 1,
+    zIndex: 150,
     paddingBottom: 32,
+    pointerEvents: "none",
   },
   titleVideo: {
     position: "absolute",
-    top: "calc(50% - 40px)",
+    top: "calc(35% - 40px)",
     left: "50%",
     transform: "translate(-50%, -50%)",
     width: "auto",
@@ -1816,7 +2918,7 @@ const s = {
   },
   lobbySubtitle: {
     fontSize: 12,
-    color: "#2a4a2a",
+    color: "#6a8a6a",
     letterSpacing: 4,
     marginTop: -12,
   },
@@ -1864,7 +2966,7 @@ const s = {
   },
   lobbyUrl: {
     fontSize: 12,
-    color: "#2a4a2a",
+    color: "#6a8a6a",
     letterSpacing: 2,
   },
   lobbyStatus: {
@@ -1912,8 +3014,8 @@ const s = {
     boxSizing: "border-box",
   },
   title:    { fontSize: 26, fontWeight: "bold", letterSpacing: 8, textShadow: "0 0 20px #c8f55a44" },
-  subtitle: { fontSize: 10, color: "#2a4a2a", letterSpacing: 3, flex: 1 },
-  voteUrl: { fontSize: 10, color: "#2a4a2a", letterSpacing: 1, marginRight: 8 },
+  subtitle: { fontSize: 10, color: "#6a8a6a", letterSpacing: 3, flex: 1 },
+  voteUrl: { fontSize: 10, color: "#6a8a6a", letterSpacing: 1, marginRight: 8 },
   statusContender: {
     flex: 1, padding: "5px 10px",
     background: "#0f1f0f", border: "1px solid #1a2e1a", color: "#c8f55a",
@@ -1963,7 +3065,7 @@ const s = {
     border: "1px solid #1a2e1a", background: "#080f08", overflow: "hidden",
   },
   panelInner: { padding: "6px 12px 8px" },
-  matchTag: { fontSize: 9, letterSpacing: 4, color: "#2a4a2a", marginBottom: 4, textAlign: "center" },
+  matchTag: { fontSize: 9, letterSpacing: 4, color: "#6a8a6a", marginBottom: 4, textAlign: "center" },
   vsRow: { display: "flex", alignItems: "center", gap: 10 },
   vsCenter: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0, width: 64 },
   vsWord: { fontSize: 12, fontWeight: "bold", color: "#1e3e1e", letterSpacing: 2 },
@@ -1980,7 +3082,7 @@ const s = {
     zIndex: 10, minWidth: 90,
   },
   playerListTitle: {
-    fontSize: 9, letterSpacing: 3, color: "#2a4a2a", marginBottom: 6,
+    fontSize: 9, letterSpacing: 3, color: "#6a8a6a", marginBottom: 6,
   },
   playerListItem: {
     fontSize: 12, letterSpacing: 2, color: "#c8f55a", padding: "2px 0",
@@ -1999,7 +3101,7 @@ const s = {
     border: "1px solid #1a2e1a", background: "#080f08", padding: "12px 16px",
   },
   leaderboardTitle: {
-    fontSize: 10, letterSpacing: 4, color: "#2a4a2a", marginBottom: 10,
+    fontSize: 10, letterSpacing: 4, color: "#6a8a6a", marginBottom: 10,
     textAlign: "center",
   },
   leaderboardRow: {
@@ -2007,7 +3109,7 @@ const s = {
     borderBottom: "1px solid #0f1f0f",
   },
   leaderboardRank: {
-    fontSize: 12, color: "#2a4a2a", width: 20, textAlign: "right",
+    fontSize: 12, color: "#6a8a6a", width: 20, textAlign: "right",
   },
   leaderboardName: {
     fontSize: 14, letterSpacing: 3, color: "#c8f55a", flex: 1,
@@ -2016,7 +3118,7 @@ const s = {
     fontSize: 16, fontWeight: "bold", color: "#c8f55a", letterSpacing: 2,
   },
   leaderboardDetail: {
-    fontSize: 10, color: "#2a4a2a", letterSpacing: 1, width: 40, textAlign: "right",
+    fontSize: 10, color: "#6a8a6a", letterSpacing: 1, width: 40, textAlign: "right",
   },
   twoColGrid: {
     display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px",
@@ -2026,7 +3128,7 @@ const s = {
     color: "#c8f55a", marginBottom: 10,
   },
   muteBtn: {
-    position: "absolute", top: 16, right: 20, zIndex: 10,
+    position: "absolute", top: 16, right: 20, zIndex: 150, pointerEvents: "auto",
     background: "transparent", border: "1px solid #1a2e1a", borderRadius: 3,
     padding: "6px 10px", fontSize: 20, cursor: "pointer",
     color: "#c8f55a", lineHeight: 1,

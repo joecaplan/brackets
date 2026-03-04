@@ -1,0 +1,37 @@
+Adobe After Effects v25.6 Windows 64 render log for project “Brackets_Grfx_02.aep”
+
+Rendering started on 2/24/2026 at 3:44:32 PM
+
+  2/24/2026 3:44:32 PM: Starting composition “Brackets_FinalRound_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_FinalRound_Comp_V1.mp4    2/24/2026 3:48:22 PM: Finished composition “Brackets_FinalRound_Comp_V1”.
+
+
+  2/24/2026 3:48:22 PM: Starting composition “Brackets_Quarterfinals_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Quarterfinals_Comp_V1.mp4    2/24/2026 3:52:30 PM: Finished composition “Brackets_Quarterfinals_Comp_V1”.
+
+
+  2/24/2026 3:52:31 PM: Starting composition “Brackets_Round01_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Round01_Comp_V1.mp4    2/24/2026 3:55:05 PM: Finished composition “Brackets_Round01_Comp_V1”.
+
+
+  2/24/2026 3:55:05 PM: Starting composition “Brackets_Round02_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Round02_Comp_V1.mp4    2/24/2026 3:55:56 PM: Finished composition “Brackets_Round02_Comp_V1”.
+
+
+  2/24/2026 3:55:56 PM: Starting composition “Brackets_Round03_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Round03_Comp_V1.mp4    2/24/2026 3:55:57 PM: Finished composition “Brackets_Round03_Comp_V1”.
+
+
+  2/24/2026 3:55:57 PM: Starting composition “Brackets_Semifinals_Comp_V1”.
+
+  Output To: C:\Users\JosephCaplan\OneDrive - ayahealthcare.com\Desktop\ClaudesBracket\src\assets\footage\finalCards\Brackets_Semifinals_Comp_V1.mp4    2/24/2026 3:59:56 PM: Finished composition “Brackets_Semifinals_Comp_V1”.
+
+
+  Total Time Elapsed: 15 Min, 24 Sec
+Log closed on 2/24/2026 at 3:59:56 PM
+

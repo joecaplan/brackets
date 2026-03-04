@@ -1,10 +1,61 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
+import bracketBotRiv from "./assets/rive/bracketBot_vertical.riv";
 import { useGameState } from "./useGameState.js";
-import { RockIcon, PaperIcon, ScissorsIcon, RpsIcon } from "./RpsIcons.jsx";
+import { RockIcon, PaperIcon, ScissorsIcon, RpsIcon, SmileIcon, FrownIcon, PoopIcon, SkullIcon, HourglassIcon } from "./RpsIcons.jsx";
 import { allMatches } from "./bracketLogic.js";
-import { CATEGORY_NAMES } from "./categories.js";
-import chooseAnswerSrc from "./assets/audio/ChooseAnswer.wav";
-import RiveTextButton from "./RiveTextButton.jsx";
+import { PLAYER_COLORS } from "./categories.js";
+
+const CATEGORY_TAGS_LIST = ["Nature", "Food", "Sports", "Media", "Arts", "Things", "Misc"];
+import bumperRound01Src from "./assets/footage/finalCards/Brackets_Round01_Comp_V1.mp4";
+import bumperRound02Src from "./assets/footage/finalCards/Brackets_Round02_Comp_V1.mp4";
+import bumperRound03Src from "./assets/footage/finalCards/Brackets_Round03_Comp_V1.mp4";
+import bumperQFSrc      from "./assets/footage/finalCards/Brackets_Quarterfinals_Comp_V1.mp4";
+import bumperSFSrc      from "./assets/footage/finalCards/Brackets_Semifinals_Comp_V1.mp4";
+import bumperFinalSrc   from "./assets/footage/finalCards/Brackets_FinalRound_Comp_V1.mp4";
+
+// ─── Round helpers ─────────────────────────────────────────────────────────────
+function getRoundLabel(bracket, matchId) {
+  if (!bracket || !matchId) return null;
+  const numRounds = bracket.left.length;
+  const labels = numRounds === 4
+    ? ["ROUND 1", "ROUND 2", "QUARTERFINALS", "SEMIFINALS"]
+    : numRounds === 3
+    ? ["ROUND 1", "QUARTERFINALS", "SEMIFINALS"]
+    : ["ROUND 1", "SEMIFINALS"];
+  for (let rIdx = 0; rIdx < bracket.left.length; rIdx++) {
+    if (bracket.left[rIdx].some(m => m.id === matchId)) return labels[rIdx];
+    if (bracket.right[rIdx].some(m => m.id === matchId)) return labels[rIdx];
+  }
+  if (bracket.final?.id === matchId) return "THE FINAL";
+  return null;
+}
+
+function getRoundInfo(bracket, matchId) {
+  if (!bracket || !matchId) return null;
+  for (let rIdx = 0; rIdx < bracket.left.length; rIdx++) {
+    if (bracket.left[rIdx].some(m => m.id === matchId)) return { rIdx, isFinal: false };
+    if (bracket.right[rIdx].some(m => m.id === matchId)) return { rIdx, isFinal: false };
+  }
+  if (bracket.final?.id === matchId) return { rIdx: bracket.left.length, isFinal: true };
+  return null;
+}
+
+function pickBumperSrc(bracket, rIdx, isFinal) {
+  if (isFinal) return bumperFinalSrc;
+  const numRounds = bracket.left.length;
+  const labels = numRounds === 4 ? ["R1", "R2", "QF", "SF"]
+               : numRounds === 3 ? ["R1", "QF", "SF"]
+               :                   ["R1", "SF"];
+  const label = labels[rIdx];
+  if (label === "QF") return bumperQFSrc;
+  if (label === "SF") return bumperSFSrc;
+  if (label === "R1") return bumperRound01Src;
+  if (label === "R2") return bumperRound02Src;
+  if (label === "R3") return bumperRound03Src;
+  return null;
+}
+import chooseAnswerSrc from "./assets/audio/SFX/ChooseAnswer.wav";
 import cursorPointerRaw    from "./assets/SVG/Cursor_Pointer.svg?raw";
 import cursorDragRaw       from "./assets/SVG/cursorDrag.svg?raw";
 import cursorHoverRaw      from "./assets/SVG/Cursor_Hover.svg?raw";
@@ -38,36 +89,351 @@ function isSlur(name) {
   return BLOCKED.some((w) => lower.includes(w));
 }
 
+// ─── Bracket text formatter ───────────────────────────────────────────────────
+function formatBracketText(bracket, category, champion) {
+  const numRounds = bracket.left.length;
+  const labels = numRounds === 4 ? ["R1","R2","QF","SF"]
+               : numRounds === 3 ? ["R1","QF","SF"]
+               :                   ["R1","SF"];
+  const lines = [];
+  lines.push(`🏆 BRACKETS${category ? ` — ${category.toUpperCase()}` : ""}`);
+  lines.push(`CHAMPION: ${champion || "TBD"}`);
+  lines.push("");
+  const f = bracket.final;
+  if (f && f.contenders[0] && f.contenders[1]) {
+    lines.push("── FINAL ──");
+    lines.push(`${f.contenders[0]} vs ${f.contenders[1]}${f.winner ? ` → ${f.winner}` : ""}`);
+    lines.push("");
+  }
+  for (let r = numRounds - 1; r >= 0; r--) {
+    lines.push(`── ${labels[r]} ──`);
+    const lRound = bracket.left[r] || [];
+    const rRound = bracket.right[r] || [];
+    [...lRound, ...rRound].forEach(m => {
+      if (m.contenders[0] && m.contenders[1])
+        lines.push(`${m.contenders[0]} vs ${m.contenders[1]}${m.winner ? ` → ${m.winner}` : ""}`);
+    });
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+// ─── Bracket text display component ──────────────────────────────────────────
+function BracketTextView({ bracket }) {
+  const numRounds = bracket.left.length;
+  const labels = numRounds === 4 ? ["R1","R2","QF","SF"]
+               : numRounds === 3 ? ["R1","QF","SF"]
+               :                   ["R1","SF"];
+  const _mono = "'PT Mono', monospace";
+  const sections = [];
+  const f = bracket.final;
+  if (f && f.contenders[0] && f.contenders[1]) {
+    sections.push({ label: "FINAL", matches: [f] });
+  }
+  for (let r = numRounds - 1; r >= 0; r--) {
+    const matches = [...(bracket.left[r] || []), ...(bracket.right[r] || [])]
+      .filter(m => m.contenders[0] && m.contenders[1]);
+    if (matches.length) sections.push({ label: labels[r], matches });
+  }
+  return (
+    <div style={{ width: "100%", marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      {sections.map(({ label, matches }) => (
+        <div key={label}>
+          <div style={{ fontFamily: _mono, fontSize: 9, letterSpacing: 4, color: "#6a8a6a", marginBottom: 6 }}>{label}</div>
+          {matches.map((m, i) => (
+            <div key={i} style={{ fontFamily: _mono, fontSize: 12, letterSpacing: 1, color: "#7a9a7a",
+              padding: "6px 10px", background: "#0a140a", borderRadius: 3, marginBottom: 4,
+              display: "flex", alignItems: "center", gap: 6 }}>
+              {m.winner === m.contenders[0] && <span style={{ color: "#c8f55a", fontSize: 10 }}>✓</span>}
+              <span style={{ flex: 1, textAlign: "right", color: m.winner === m.contenders[0] ? "#c8f55a" : "#7a9a7a" }}>{m.contenders[0]}</span>
+              <span style={{ color: "#6a8a6a", fontSize: 10 }}>vs</span>
+              <span style={{ flex: 1, color: m.winner === m.contenders[1] ? "#c8f55a" : "#7a9a7a" }}>{m.contenders[1]}</span>
+              {m.winner === m.contenders[1] && <span style={{ color: "#c8f55a", fontSize: 10 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Confetti({ active }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const colors = [...PLAYER_COLORS, "#ffffff"];
+    const particles = Array.from({ length: 120 }, () => ({
+      x:    Math.random() * canvas.width,
+      y:    -10 - Math.random() * canvas.height * 0.3,
+      vx:   (Math.random() - 0.5) * 5,
+      vy:   Math.random() * 3 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      w:    Math.random() * 10 + 4,
+      h:    Math.random() * 5 + 3,
+      rot:  Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.18,
+    }));
+    let animId;
+    let stopped = false;
+    const tick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let allGone = true;
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy; p.vy += 0.07; p.rot += p.rotV;
+        if (p.y < canvas.height + 30) allGone = false;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, Math.max(0, 1 - p.y / canvas.height * 0.5));
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      if (!allGone && !stopped) animId = requestAnimationFrame(tick);
+    };
+    animId = requestAnimationFrame(tick);
+    return () => { stopped = true; cancelAnimationFrame(animId); };
+  }, [active]);
+  if (!active) return null;
+  return (
+    <canvas ref={canvasRef} style={{
+      position: "fixed", inset: 0, zIndex: 900, pointerEvents: "none",
+      width: "100%", height: "100%",
+    }} />
+  );
+}
+
+// ─── ReactionBar ─────────────────────────────────────────────────────────────
+function ReactionBar({ sendReaction, myColor }) {
+  const [text, setText] = useState("");
+  const _mono = "'PT Mono', monospace";
+
+  const send = (type, textVal) => {
+    sendReaction(type, textVal || null);
+  };
+
+  const handleSubmit = () => {
+    const trimmed = text.trim().slice(0, 20);
+    if (!trimmed || isSlur(trimmed)) { setText(""); return; }
+    send("text", trimmed);
+    setText("");
+  };
+
+  const iconBtn = { background: "transparent", border: "none", cursor: "pointer", padding: "0.3px 0",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flex: 1, minWidth: 0,
+    WebkitTapHighlightColor: "transparent", touchAction: "manipulation" };
+  const iconSz = "clamp(32px, calc(20vw - 6px), 104px)";
+  const iconSzHalf = "clamp(16px, calc(10vw - 3px), 52px)";
+
+  return (
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 500,
+      background: "#060e06", borderTop: "1px solid #1a2e1a",
+      padding: "0px 12px max(32px, calc(env(safe-area-inset-bottom) + 20px))", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", gap: 0, marginBottom: -5 }}>
+        <button style={iconBtn} onClick={() => send("smile")} onTouchEnd={(e) => { e.preventDefault(); send("smile"); }}>
+          <div style={{ width: iconSz, height: iconSz, display: "flex" }}><SmileIcon size="100%" color={myColor} /></div>
+        </button>
+        <button style={iconBtn} onClick={() => send("frown")} onTouchEnd={(e) => { e.preventDefault(); send("frown"); }}>
+          <div style={{ width: iconSz, height: iconSz, display: "flex" }}><FrownIcon size="100%" color={myColor} /></div>
+        </button>
+        <button style={iconBtn} onClick={() => send("poop")} onTouchEnd={(e) => { e.preventDefault(); send("poop"); }}>
+          <div style={{ width: iconSz, height: iconSz, display: "flex" }}><PoopIcon size="100%" color={myColor} /></div>
+        </button>
+        <button style={iconBtn} onClick={() => send("skull")} onTouchEnd={(e) => { e.preventDefault(); send("skull"); }}>
+          <div style={{ width: iconSz, height: iconSz, display: "flex" }}><SkullIcon size="100%" color={myColor} /></div>
+        </button>
+        <button style={iconBtn} onClick={() => send("hourglass")} onTouchEnd={(e) => { e.preventDefault(); send("hourglass"); }}>
+          <div style={{ width: iconSzHalf, height: iconSzHalf, display: "flex" }}><HourglassIcon size="100%" color={myColor} /></div>
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="text"
+          value={text}
+          maxLength={20}
+          placeholder="CHAT..."
+          onChange={(e) => setText(e.target.value.toUpperCase().slice(0, 20))}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          style={{ flex: 1, background: "#0a1a0a", border: "1px solid #1a2e1a", borderRadius: 4,
+            padding: "8px 12px", color: "#c8f55a", fontFamily: _mono, fontSize: 12,
+            letterSpacing: 2, outline: "none", minWidth: 0 }}
+        />
+        <button onClick={handleSubmit}
+          onTouchEnd={(e) => { e.preventDefault(); handleSubmit(); }}
+          style={{ background: myColor, border: "none", borderRadius: 4, padding: "8px 14px",
+            color: "#040e04", fontFamily: _mono, fontSize: 12, fontWeight: "bold",
+            cursor: "pointer", flexShrink: 0, WebkitTapHighlightColor: "transparent" }}>
+          SEND
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── BracketBotVertical ──────────────────────────────────────────────────────
+function BracketBotVertical({ color }) {
+  const wrapRef       = useRef(null);
+  const xInputRef     = useRef(null);
+  const yInputRef     = useRef(null);
+  const triggerRef    = useRef(null);
+  const vmInstanceRef = useRef(null);
+
+  const { rive, RiveComponent } = useRive({
+    src: bracketBotRiv,
+    artboard: "Artboard",
+    stateMachines: "bracketBot",
+    autoplay: true,
+    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
+  });
+
+  useEffect(() => {
+    if (!rive) return;
+    const inputs = rive.stateMachineInputs("bracketBot");
+    if (!inputs || !inputs.length) return;
+    const lc = (s) => s.toLowerCase().replace(/\s/g, "");
+    const find = (...names) => inputs.find(i => names.some(n => lc(i.name) === lc(n)));
+    xInputRef.current   = find("mouseX", "x", "cursorX", "lookX", "eyeX", "posX");
+    yInputRef.current   = find("mouseY", "y", "cursorY", "lookY", "eyeY", "posY");
+    triggerRef.current  = find("click", "Click", "tap", "Tap", "speak", "Speak", "talk", "Talk", "pressed", "Pressed");
+  }, [rive]);
+
+  // Convert hex string to r/g/b and apply to a color property
+  const applyHexColor = useCallback((colorProp, hex) => {
+    if (!colorProp || !hex || hex.length < 7) return;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    colorProp.rgb(r, g, b);
+  }, []);
+
+  // Bind ViewModel and set initial color
+  useEffect(() => {
+    if (!rive) return;
+    const vm = rive.viewModelByName("ViewModel1");
+    if (!vm) return;
+    const vmi = vm.defaultInstance();
+    if (!vmi) return;
+    vmInstanceRef.current = vmi;
+    try { rive.bindViewModelInstance(vmi); } catch {}
+    if (color) {
+      const colorProp = vmi.color("colorProperty");
+      applyHexColor(colorProp, color);
+    }
+  }, [rive]); // eslint-disable-line
+
+  // Update color whenever it changes
+  useEffect(() => {
+    const vmi = vmInstanceRef.current;
+    if (!vmi || !color) return;
+    const colorProp = vmi.color("colorProperty");
+    applyHexColor(colorProp, color);
+  }, [color, applyHexColor]);
+
+  // Touch → eye tracking (relative to full viewport) + synthetic pointermove
+  const handleTouch = useCallback((e) => {
+    if (!wrapRef.current) return;
+    const touch = e.touches[0] || e.changedTouches[0];
+    if (!touch) return;
+    const nx = Math.max(0, Math.min(1, touch.clientX / window.innerWidth));
+    const ny = Math.max(0, Math.min(1, touch.clientY / window.innerHeight));
+    if (xInputRef.current) xInputRef.current.value = nx * 100;
+    if (yInputRef.current) yInputRef.current.value = ny * 100;
+    const canvas = wrapRef.current.querySelector("canvas");
+    if (canvas) {
+      canvas.dispatchEvent(new PointerEvent("pointermove", {
+        clientX: touch.clientX, clientY: touch.clientY,
+        pointerId: 1, bubbles: false, cancelable: true,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("touchmove", handleTouch, { passive: true });
+    window.addEventListener("touchstart", handleTouch, { passive: true });
+    return () => {
+      window.removeEventListener("touchmove", handleTouch);
+      window.removeEventListener("touchstart", handleTouch);
+    };
+  }, [handleTouch]);
+
+  // Tap on robot → trigger talk
+  const handleTap = useCallback(() => {
+    if (triggerRef.current) {
+      try { triggerRef.current.fire(); } catch { try { triggerRef.current.value = true; } catch {} }
+    }
+  }, []);
+
+  return (
+    <div ref={wrapRef} onClick={handleTap}
+      style={{ width: "clamp(60px, 15dvh, 110px)", height: "clamp(60px, 15dvh, 110px)", flexShrink: 0, cursor: "pointer" }}>
+      <RiveComponent style={{ width: "100%", height: "100%", display: "block" }} />
+    </div>
+  );
+}
+
 export default function PhoneVote() {
   const playerId = useRef(
     localStorage.getItem("bracket_pid") || crypto.randomUUID()
   );
 
+  // Room code — read from URL param or require manual entry
+  const [roomCode, setRoomCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("room")?.toUpperCase() || null;
+  });
+  const [roomInput, setRoomInput] = useState("");
+  const [roomError, setRoomError] = useState("");
+
   const {
     phase, category, bracketSize, playerCount, totalPlayers, isHost,
     bracket, currentMatchId, champion, votedCount, tiebreaker,
-    connected, playerNames,
+    connected, playerNames, scores, playerColors, voters, doubleVoter,
+    customCategories,
     joinGame, leaveGame, selectCategory, setBracketSize, startGame, setCustomItems,
     vote: firebaseVote, skip, hostPickWinner, startRPS, submitRPS,
-    startOneSecond, startOSTimer, stopOSTimer,
-  } = useGameState(playerId.current);
+    startOneSecond, startOSTimer, stopOSTimer, playAgain, sendReaction,
+  } = useGameState(playerId.current, roomCode);
+
+  const myColorHex = PLAYER_COLORS[(playerColors?.[playerId.current] ?? 0) % PLAYER_COLORS.length];
+  const reactionBar = (phase === "playing" || phase === "tiebreaker" || phase === "rps" || phase === "oneSecond")
+    ? <ReactionBar sendReaction={sendReaction} myColor={myColorHex} />
+    : null;
 
   const [voted, setVoted] = useState(false);
   const [rpsChosen, setRpsChosen] = useState(false);
   const [loggedOff, setLoggedOff] = useState(false);
+  const [confettiActive, setConfettiActive] = useState(false);
+  const prevChampionRef = useRef(null);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customItems, setCustomItemsLocal] = useState(Array(32).fill(""));
   const [randomMode, setRandomMode] = useState(false);
   const [customError, setCustomError] = useState("");
-  const [playerName, setPlayerName] = useState(
-    localStorage.getItem("bracket_name") || ""
-  );
-  const [nameInput, setNameInput] = useState("");
+  const [playerName, setPlayerName] = useState(localStorage.getItem("bracket_name") || "");
+  const [nameInput, setNameInput] = useState(localStorage.getItem("bracket_name") || "");
   const [nameError, setNameError] = useState("");
+  const [pickedColorIdx, setPickedColorIdx] = useState(null);
   const [muted, setMuted] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [osDisplayMs, setOsDisplayMs] = useState(0);
+  const [bumperSrc, setBumperSrc] = useState(null);
+  const [bumperFading, setBumperFading] = useState(false);
+  const [selectedTag, setSelectedTag] = useState(null); // null = show all
+  const [searchQuery, setSearchQuery] = useState("");
   const osStartRef = useRef(null); // local capture of Date.now() at START press for accurate elapsed
   const lastMatchId = useRef(null);
+  const bumperFadingRef = useRef(false);
+  const lastBumperRoundRef = useRef(null);
+  const firebaseBootstrappedRef = useRef(false);
+  const rpsChosenRoundRef = useRef(null); // which RPS round the player submitted in
+  const rpsLingerDataRef    = useRef(null);   // saved tiebreaker when result was revealed
+  const rpsLingerActiveRef  = useRef(false);  // true while in "rps" phase with revealed result
+  const rpsLingerEndRef     = useRef(null);   // linger expiry timestamp (ms)
+  const [, setRpsLingerTick] = useState(0);   // bumped to force re-render when linger expires
 
   useEffect(() => {
     localStorage.setItem("bracket_pid", playerId.current);
@@ -110,8 +476,18 @@ export default function PhoneVote() {
   // Auto-join when connected and has name (unless logged off)
   useEffect(() => {
     if (connected && !loggedOff && playerName)
-      joinGame(playerId.current, playerName);
-  }, [connected, joinGame, loggedOff, playerName]);
+      joinGame(playerId.current, playerName, pickedColorIdx);
+  }, [connected, joinGame, loggedOff, playerName, pickedColorIdx]); // eslint-disable-line
+
+  // Confetti — trigger when champion first set
+  useEffect(() => {
+    if (champion && !prevChampionRef.current) {
+      setConfettiActive(true);
+      const t = setTimeout(() => setConfettiActive(false), 5000);
+      return () => clearTimeout(t);
+    }
+    prevChampionRef.current = champion;
+  }, [champion]);
 
   // Detect host reset: if playerNames drops to empty after having entries, reset to name screen
   const prevPlayerNamesCount = useRef(null);
@@ -127,12 +503,15 @@ export default function PhoneVote() {
     prevPlayerNamesCount.current = count;
   }, [playerNames, playerName, loggedOff, connected]);
 
-  // Reset voted flag when match changes
+  // Sync voted flag from Firebase voters — handles refresh AND match transitions.
+  // voters resets to {} when a new match starts, and contains pid→choice when voted.
   useEffect(() => {
-    if (currentMatchId !== lastMatchId.current) {
-      lastMatchId.current = currentMatchId;
-      setVoted(false);
-    }
+    setVoted(!!(voters && voters[playerId.current]));
+  }, [voters]); // eslint-disable-line
+
+  // Track match changes (for bumper video logic)
+  useEffect(() => {
+    lastMatchId.current = currentMatchId;
   }, [currentMatchId]);
 
   // Reset rpsChosen when RPS round changes
@@ -141,6 +520,42 @@ export default function PhoneVote() {
       setRpsChosen(false);
     }
   }, [tiebreaker && tiebreaker.rps && tiebreaker.rps.round]); // eslint-disable-line
+
+  // ── Bumper videos: bootstrap (suppress replay on page refresh mid-game) ──
+  useEffect(() => {
+    if (!connected || firebaseBootstrappedRef.current) return;
+    firebaseBootstrappedRef.current = true;
+    if (phase === "playing" && currentMatchId && bracket) {
+      const curr = getRoundInfo(bracket, currentMatchId);
+      if (curr) lastBumperRoundRef.current = { rIdx: curr.rIdx, isFinal: curr.isFinal };
+    }
+  }, [connected, phase, currentMatchId, bracket]); // eslint-disable-line
+
+  // ── Bumper videos: fire on new round ──
+  useEffect(() => {
+    if (phase !== "playing" || !currentMatchId || !bracket) return;
+    const curr = getRoundInfo(bracket, currentMatchId);
+    if (!curr) return;
+    const last = lastBumperRoundRef.current;
+    const isNewRound = !last
+      || (curr.isFinal !== last.isFinal)
+      || (!curr.isFinal && curr.rIdx !== last.rIdx);
+    if (!isNewRound) return;
+    const src = pickBumperSrc(bracket, curr.rIdx, curr.isFinal);
+    if (src) {
+      lastBumperRoundRef.current = { rIdx: curr.rIdx, isFinal: curr.isFinal };
+      bumperFadingRef.current = false;
+      setBumperFading(false);
+      setBumperSrc(src);
+    }
+  }, [currentMatchId, phase]); // eslint-disable-line
+
+  // ── Bumper videos: auto-dismiss after fade ──
+  useEffect(() => {
+    if (!bumperFading) return;
+    const t = setTimeout(() => { setBumperSrc(null); setBumperFading(false); }, 800);
+    return () => clearTimeout(t);
+  }, [bumperFading]);
 
   // Live timer for One Second — drives display on all phones while timer is running
   useEffect(() => {
@@ -202,6 +617,7 @@ export default function PhoneVote() {
   const vote = (choice) => {
     if (voted) return;
     setVoted(true);
+    navigator.vibrate?.(50);
     if (!muted && chooseAnswerSfx.current) {
       chooseAnswerSfx.current.currentTime = 0;
       chooseAnswerSfx.current.play().catch(() => {});
@@ -210,9 +626,18 @@ export default function PhoneVote() {
   };
 
   // Mute toggle button rendered in every screen
+  const _iconColor = muted ? "#bb6666" : "#c8f55a";
   const muteButton = (
-    <button style={{ ...vs.muteBtn, color: muted ? "#bb6666" : "#c8f55a", borderColor: muted ? "#bb6666" : "#1a2e1a" }} onClick={toggleMute} title={muted ? "Unmute" : "Mute"}>
-      {muted ? "🔇" : "🔊"}
+    <button style={{ ...vs.muteBtn, color: _iconColor, borderColor: muted ? "#bb6666" : "#1a2e1a" }} onClick={toggleMute} title={muted ? "Unmute" : "Mute"}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill={_iconColor} style={{ display: "block" }}>
+        {muted ? (
+          // Speaker with X (muted)
+          <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 18L19 19.27 20.27 18 5.27 3 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+        ) : (
+          // Speaker with waves (unmuted)
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+        )}
+      </svg>
     </button>
   );
 
@@ -223,10 +648,76 @@ export default function PhoneVote() {
     localStorage.removeItem("bracket_name");
   };
 
+  // ── Bumper overlay (fixed, renders on top of any screen during gameplay) ──
+  const bumperOverlay = bumperSrc ? (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 999,
+      background: "#060e06",
+      opacity: bumperFading ? 0 : 1,
+      transition: bumperFading ? "opacity 0.667s linear" : "none",
+      pointerEvents: bumperFading ? "none" : "all",
+    }}>
+      <video
+        key={bumperSrc}
+        src={bumperSrc}
+        autoPlay
+        playsInline
+        muted
+        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+        onTimeUpdate={(e) => {
+          const v = e.target;
+          if (!v.duration || bumperFadingRef.current) return;
+          if (v.duration - v.currentTime <= 8 / 12) {
+            bumperFadingRef.current = true;
+            setBumperFading(true);
+          }
+        }}
+        onEnded={() => {
+          if (!bumperFadingRef.current) { bumperFadingRef.current = true; setBumperFading(true); }
+        }}
+        onError={() => { setBumperSrc(null); setBumperFading(false); bumperFadingRef.current = false; }}
+      />
+    </div>
+  ) : null;
+
   const handleRejoin = () => {
     setLoggedOff(false);
     // Name was cleared, so the name input screen will show
   };
+
+  // ── Room code entry (if not provided via URL) — shown before connecting ──
+  if (!roomCode) {
+    const submitRoom = () => {
+      const code = roomInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (code.length < 4) { setRoomError("Enter a valid room code."); return; }
+      const url = new URL(window.location.href);
+      url.searchParams.set("room", code);
+      window.history.replaceState({}, "", url.toString());
+      setRoomError("");
+      setRoomCode(code);
+    };
+    return (
+      <div style={vs.root}>
+        {muteButton}
+        <div style={vs.lobbyTitle}>BRACKETS</div>
+        <div style={vs.lobbySubtitle}>Enter room code:</div>
+        {roomError && <div style={vs.nameError}>{roomError}</div>}
+        <input
+          style={{ ...vs.nameInput, fontSize: 28, letterSpacing: 8, textAlign: "center", textTransform: "uppercase" }}
+          type="text"
+          maxLength={6}
+          placeholder="XXXXX"
+          value={roomInput}
+          onChange={(e) => { setRoomInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")); setRoomError(""); }}
+          onKeyDown={(e) => { if (e.key === "Enter") submitRoom(); }}
+          autoFocus
+        />
+        <button style={{ ...vs.startGameBtn, width: 280 }} onClick={submitRoom}>
+          JOIN ROOM
+        </button>
+      </div>
+    );
+  }
 
   // ── Loading ──
   if (!connected) {
@@ -241,9 +732,11 @@ export default function PhoneVote() {
 
   // ── Name input ──
   if (!playerName) {
+    const takenColorIdxs = new Set(Object.values(playerColors || {}));
     const submitName = () => {
       const name = nameInput.trim().slice(0, 6).toUpperCase();
       if (!name) return;
+      if (pickedColorIdx === null) { setNameError("Pick a color first."); return; }
       if (isSlur(name)) {
         setNameError("do better.");
         setNameInput("");
@@ -264,7 +757,7 @@ export default function PhoneVote() {
     return (
       <div style={vs.root}>
         {muteButton}
-        <div style={vs.lobbyTitle}>BRACKET</div>
+        <div style={vs.lobbyTitle}>BRACKETS</div>
         <div style={vs.lobbySubtitle}>Enter your name (max 6 chars):</div>
         {nameError && <div style={vs.nameError}>{nameError}</div>}
         <input
@@ -273,11 +766,33 @@ export default function PhoneVote() {
           maxLength={6}
           placeholder="NAME"
           value={nameInput}
-          onChange={(e) => { setNameInput(e.target.value.slice(0, 6)); setNameError(""); }}
+          onChange={(e) => { setNameInput(e.target.value.slice(0, 6).toUpperCase()); setNameError(""); }}
           onKeyDown={(e) => { if (e.key === "Enter") submitName(); }}
           autoFocus
         />
-        <button style={vs.startGameBtn} onClick={submitName}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", maxWidth: 280, margin: "8px 0" }}>
+          {PLAYER_COLORS.map((color, idx) => {
+            const isTaken = takenColorIdxs.has(idx);
+            const isPicked = pickedColorIdx === idx;
+            return (
+              <div
+                key={idx}
+                onClick={() => { if (!isTaken) setPickedColorIdx(idx); }}
+                style={{
+                  width: 36, height: 36, borderRadius: 6,
+                  background: isTaken ? "#1a2a1a" : color,
+                  border: isPicked ? `3px solid #fff` : `2px solid ${isTaken ? "#1a2a1a" : color}`,
+                  opacity: isTaken ? 0.25 : 1,
+                  cursor: isTaken ? "not-allowed" : "pointer",
+                  boxShadow: isPicked ? `0 0 12px ${color}` : "none",
+                  flexShrink: 0,
+                  transition: "box-shadow 0.15s",
+                }}
+              />
+            );
+          })}
+        </div>
+        <button style={{ ...vs.startGameBtn, width: 280 }} onClick={submitName}>
           JOIN
         </button>
       </div>
@@ -298,6 +813,19 @@ export default function PhoneVote() {
       </div>
     );
   }
+
+  // ── RPS result linger — keep showing the result briefly after phase leaves "rps",
+  //    matching the main screen's 1100ms linger window so both transition together.
+  if (phase === "rps" && tiebreaker?.rps?.revealed) {
+    rpsLingerActiveRef.current = true;
+    rpsLingerEndRef.current    = null;
+    rpsLingerDataRef.current   = tiebreaker;
+  } else if (rpsLingerActiveRef.current && phase !== "rps" && !rpsLingerEndRef.current) {
+    rpsLingerActiveRef.current = false;
+    rpsLingerEndRef.current    = Date.now() + 1100;
+    setTimeout(() => setRpsLingerTick(n => n + 1), 1150);
+  }
+  const showRpsLinger = !!(rpsLingerEndRef.current && Date.now() < rpsLingerEndRef.current);
 
   // ── Lobby Phase ──
   if (phase === "lobby") {
@@ -358,9 +886,9 @@ export default function PhoneVote() {
 
     if (isHost && !category) {
       return (
-        <div style={{ ...vs.root, justifyContent: "flex-start", overflowY: "auto" }}>
+        <div style={{ ...vs.root, height: "100dvh", minHeight: "unset", justifyContent: "flex-start", overflowY: "auto" }}>
           {muteButton}
-          <div style={vs.lobbyTitle}>BRACKET</div>
+          <div style={vs.lobbyTitle}>BRACKETS</div>
           <div style={vs.sizeRow}>
             {[8, 16, 32].map(n => (
               <button key={n}
@@ -372,15 +900,86 @@ export default function PhoneVote() {
           </div>
           <div style={vs.sizeLabel}>SEEDS</div>
           <div style={vs.lobbySubtitle}>Choose a category:</div>
-          {CATEGORY_NAMES.filter(name => name !== "random").map(name => (
-            <RiveTextButton key={name} label={name.toUpperCase()}
-              onClick={() => { setRandomMode(false); selectCategory(name); }}
-              onTouchEnd={(e) => { e.preventDefault(); setRandomMode(false); selectCategory(name); }} />
-          ))}
-          <RiveTextButton label="?????" onClick={() => selectCategory("?????")}
-            onTouchEnd={(e) => { e.preventDefault(); selectCategory("?????"); }} />
-          <RiveTextButton label="CUSTOM BRACKET" onClick={() => setShowCustomInput(true)}
-            onTouchEnd={(e) => { e.preventDefault(); setShowCustomInput(true); }} />
+
+          {/* Search box */}
+          <div style={{ position: "relative", width: "100%", maxWidth: 320, marginBottom: 8 }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); if (e.target.value) setSelectedTag(null); }}
+              placeholder="Search brackets..."
+              style={{ width: "100%", padding: "10px 36px 10px 14px", fontSize: 14, fontFamily: "'PT Mono','Courier New',monospace", background: "#0f1f0f", color: "#c8f55a", border: "1px solid #2a4a1a", borderRadius: 6, outline: "none", boxSizing: "border-box", letterSpacing: 1 }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#4a7a2a", fontSize: 16, cursor: "pointer", padding: 0, lineHeight: 1 }}>
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Tag filter row — hidden while searching */}
+          {!searchQuery && (
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, marginBottom: 4 }}>
+              <button
+                style={selectedTag === null ? vs.tagBtnActive : vs.tagBtn}
+                onClick={() => setSelectedTag(null)}>
+                ALL
+              </button>
+              {CATEGORY_TAGS_LIST.map(tag => (
+                <button key={tag}
+                  style={selectedTag === tag ? vs.tagBtnActive : vs.tagBtn}
+                  onClick={() => setSelectedTag(tag)}>
+                  {tag.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Category list — from Firebase only */}
+          {(() => {
+            const allCustom = Object.entries(customCategories || {});
+            const filtered = searchQuery
+              ? allCustom.filter(([, c]) => {
+                  const q = searchQuery.toLowerCase();
+                  return c.name?.toLowerCase().includes(q)
+                    || (c.tags || []).some(t => t.toLowerCase().includes(q))
+                    || (c.hiddenTags || []).some(t => t.toLowerCase().includes(q));
+                })
+              : allCustom.filter(([, c]) => selectedTag === null || (c.tags || []).includes(selectedTag));
+            filtered.sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
+            return (
+              <>
+                {filtered.length === 0 && (
+                  <div style={{ color: "#3a5a1a", fontSize: 13, letterSpacing: 1, padding: "8px 0" }}>
+                    {searchQuery ? `No results for "${searchQuery}"` : "No brackets for this tag."}
+                  </div>
+                )}
+                {filtered.map(([key, c], i) => (
+                  <button
+                    key={key + "-" + (searchQuery || selectedTag)}
+                    style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${i * 35}ms both` }}
+                    onClick={() => { setRandomMode(false); selectCategory(key); }}
+                    onTouchEnd={(e) => { e.preventDefault(); setRandomMode(false); selectCategory(key); }}>
+                    {c.name.toUpperCase()}
+                  </button>
+                ))}
+                <button
+                  style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${filtered.length * 35}ms both`, opacity: 0.6 }}
+                  onClick={() => selectCategory("?????")}
+                  onTouchEnd={(e) => { e.preventDefault(); selectCategory("?????"); }}>
+                  ?????
+                </button>
+                <button
+                  style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${(filtered.length + 1) * 35}ms both`, opacity: 0.6 }}
+                  onClick={() => setShowCustomInput(true)}
+                  onTouchEnd={(e) => { e.preventDefault(); setShowCustomInput(true); }}>
+                  CUSTOM BRACKET
+                </button>
+              </>
+            );
+          })()}
           <div style={vs.playerCountLobby}>
             {playerCount} player{playerCount !== 1 ? "s" : ""} joined
           </div>
@@ -395,7 +994,7 @@ export default function PhoneVote() {
       return (
         <div style={vs.root}>
           {muteButton}
-          <div style={vs.lobbyTitle}>BRACKET</div>
+          <div style={vs.lobbyTitle}>BRACKETS</div>
           <div style={vs.categorySelected}>
             <div style={vs.catLabel}>CATEGORY</div>
             <div style={vs.catName}>{displayCategory.toUpperCase()}</div>
@@ -403,7 +1002,7 @@ export default function PhoneVote() {
           <div style={vs.playerCountLobby}>
             {playerCount} player{playerCount !== 1 ? "s" : ""} joined
           </div>
-          <button style={vs.startGameBtn} onClick={startGame}>
+          <button style={{ ...vs.startGameBtn, width: 280 }} onClick={startGame}>
             ▶ START GAME
           </button>
           <button style={vs.backBtn} onClick={() => { setRandomMode(false); selectCategory(null); }}>
@@ -419,7 +1018,7 @@ export default function PhoneVote() {
     return (
       <div style={vs.root}>
         {muteButton}
-        <div style={vs.lobbyTitle}>BRACKET</div>
+        <div style={vs.lobbyTitle}>BRACKETS</div>
         {category ? (
           <div style={vs.categorySelected}>
             <div style={vs.catLabel}>CATEGORY</div>
@@ -431,6 +1030,26 @@ export default function PhoneVote() {
         <div style={vs.playerCountLobby}>
           {playerCount} player{playerCount !== 1 ? "s" : ""} joined
         </div>
+        {playerNames && Object.keys(playerNames).length > 0 && (
+          <div style={vs.lobbyNamesList}>
+            {Object.entries(playerNames).map(([pid, name], i) => {
+              const isMe    = pid === playerId.current;
+              const colorIdx = playerColors?.[pid] ?? i;
+              const color    = PLAYER_COLORS[colorIdx % PLAYER_COLORS.length];
+              return (
+                <span key={pid} className="anim-nameTagIn" style={{
+                  ...vs.lobbyNameTag,
+                  animationDelay: `${i * 50}ms`,
+                  color,
+                  background: isMe ? "#0f2a0f" : "#0a140a",
+                  border: `1px solid ${isMe ? color : "#1a2e1a"}`,
+                  boxShadow: isMe ? `0 0 10px ${color}55` : "none",
+                  fontWeight: isMe ? "bold" : "normal",
+                }}>{name}</span>
+              );
+            })}
+          </div>
+        )}
         <div style={vs.waitNote}>Waiting for host to start…</div>
         <button style={vs.logOffBtn} onClick={handleLogOff}>LOG OFF</button>
       </div>
@@ -439,16 +1058,35 @@ export default function PhoneVote() {
 
   // ── Champion ──
   if (champion || phase === "finished") {
+    const bracketText = bracket ? formatBracketText(bracket, category, champion) : null;
+    const handleCopy = () => {
+      if (!bracketText) return;
+      navigator.clipboard.writeText(bracketText).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    };
     return (
-      <div style={vs.root}>
+      <div style={{ ...vs.root, justifyContent: "flex-start", overflowY: "auto", paddingTop: 48 }}>
         {muteButton}
-        <div style={vs.champBox}>
-          <div style={vs.champEmoji}>🏆</div>
+        <div className="anim-champReveal" style={vs.champBox}>
+          <div className="anim-trophyBounce" style={vs.champEmoji}>🏆</div>
           <div style={vs.champLabel}>CHAMPION</div>
-          <div style={vs.champName}>{champion}</div>
+          <div className="anim-glowPulse" style={vs.champName}>{champion}</div>
         </div>
-        <div style={vs.waitNote}>Host can start a new round…</div>
+        {bracketText && (
+          <button style={vs.copyBtn} onClick={handleCopy}>
+            {copied ? "COPIED!" : "COPY BRACKET"}
+          </button>
+        )}
+        {bracket && <BracketTextView bracket={bracket} />}
+        {isHost
+          ? <button style={vs.skipBtn} onClick={playAgain}>↺ PLAY AGAIN</button>
+          : <div style={{ ...vs.waitNote, marginTop: 16 }}>Host can start a new round</div>
+        }
         <button style={vs.logOffBtn} onClick={handleLogOff}>LOG OFF</button>
+        {bumperOverlay}
+        <Confetti active={confettiActive} />
       </div>
     );
   }
@@ -456,23 +1094,28 @@ export default function PhoneVote() {
   // ── Tiebreaker — host picks method ──
   if (phase === "tiebreaker" && tiebreaker && isHost) {
     return (
-      <div style={vs.root}>
+      <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
         {muteButton}
         <div style={vs.tiebreakerTitle}>TIE!</div>
         <div style={vs.tiebreakerVs}>{tiebreaker.c0} vs {tiebreaker.c1}</div>
         <div style={vs.lobbySubtitle}>How to break the tie?</div>
-        <button style={{ ...vs.startGameBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={startRPS}>
+        <button style={{ ...vs.startGameBtn, width: 280, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={startRPS}>
           <RockIcon size={22} /> ROCK PAPER SCISSORS
         </button>
-        <button style={{ ...vs.startGameBtn, marginTop: 8 }} onClick={startOneSecond}>
+        <button style={{ ...vs.startGameBtn, width: 280, marginTop: 8 }} onClick={startOneSecond}>
           ⏱ ONE SECOND
         </button>
         <div style={vs.tiebreakerOr}>— OR —</div>
         <div style={vs.lobbySubtitle}>Pick the winner:</div>
-        <RiveTextButton label={tiebreaker.c0} onClick={() => hostPickWinner(tiebreaker.c0)}
-          onTouchEnd={(e) => { e.preventDefault(); hostPickWinner(tiebreaker.c0); }} />
-        <RiveTextButton label={tiebreaker.c1} onClick={() => hostPickWinner(tiebreaker.c1)}
-          onTouchEnd={(e) => { e.preventDefault(); hostPickWinner(tiebreaker.c1); }} />
+        <button style={vs.choiceBtn} onClick={() => hostPickWinner(tiebreaker.c0)}
+          onTouchEnd={(e) => { e.preventDefault(); hostPickWinner(tiebreaker.c0); }}>
+          {tiebreaker.c0}
+        </button>
+        <button style={vs.choiceBtn} onClick={() => hostPickWinner(tiebreaker.c1)}
+          onTouchEnd={(e) => { e.preventDefault(); hostPickWinner(tiebreaker.c1); }}>
+          {tiebreaker.c1}
+        </button>
+        {reactionBar}
       </div>
     );
   }
@@ -480,11 +1123,12 @@ export default function PhoneVote() {
   // ── Tiebreaker — non-host waiting ──
   if (phase === "tiebreaker" && tiebreaker && !isHost) {
     return (
-      <div style={vs.root}>
+      <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
         {muteButton}
         <div style={vs.tiebreakerTitle}>TIE!</div>
         <div style={vs.tiebreakerVs}>{tiebreaker.c0} vs {tiebreaker.c1}</div>
         <div style={vs.status}>Host is deciding how to break the tie…</div>
+        {reactionBar}
       </div>
     );
   }
@@ -497,79 +1141,87 @@ export default function PhoneVote() {
     const amInRPS = amPlayer1 || amPlayer2;
     const mySide = amPlayer1 ? tiebreaker.c0 : tiebreaker.c1;
 
-    // Show result briefly
-    if (rps.result && rps.result !== "draw") {
+    // Show result only after the main screen has revealed it
+    if (rps.result && rps.result !== "draw" && rps.revealed) {
       const rpsWinnerName = rps.result === "p1" ? tiebreaker.c0 : tiebreaker.c1;
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>RPS RESULT</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center", margin: "12px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center", margin: "-15px 0" }}>
             <RpsIcon choice={rps.choice1} size={48} />
             <span style={{ fontSize: 12, letterSpacing: 4, color: "#7a9a7a" }}>vs</span>
             <RpsIcon choice={rps.choice2} size={48} />
           </div>
           <div style={vs.champName}>{rpsWinnerName} WINS!</div>
+          {reactionBar}
         </div>
       );
     }
 
-    if (rps.result === "draw") {
+    if (rps.result === "draw" && rps.revealed) {
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>DRAW!</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center", margin: "12px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center", margin: "-15px 0" }}>
             <RpsIcon choice={rps.choice1} size={48} />
             <span style={{ fontSize: 12, letterSpacing: 4, color: "#7a9a7a" }}>vs</span>
             <RpsIcon choice={rps.choice2} size={48} />
           </div>
           <div style={vs.status}>Going again…</div>
+          {reactionBar}
         </div>
       );
     }
 
-    if (amInRPS && !rpsChosen) {
+    // effectivelyChosen: player clicked in THIS round (not a stale value from a previous draw round)
+    const effectivelyChosen = rpsChosen && rpsChosenRoundRef.current === rps.round;
+
+    if (amInRPS && !effectivelyChosen) {
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>ROCK PAPER SCISSORS</div>
           <div style={vs.lobbySubtitle}>Round {rps.round} · You're playing for {mySide}</div>
           <div style={vs.rpsRow}>
-            <button style={vs.rpsBtn} onClick={() => { setRpsChosen(true); submitRPS(playerId.current, "rock"); }}>
+            <button style={vs.rpsBtn} onClick={() => { rpsChosenRoundRef.current = rps.round; setRpsChosen(true); submitRPS(playerId.current, "rock"); }}>
               <RockIcon size={40} />
               <span style={vs.rpsBtnLabel}>ROCK</span>
             </button>
-            <button style={vs.rpsBtn} onClick={() => { setRpsChosen(true); submitRPS(playerId.current, "paper"); }}>
+            <button style={vs.rpsBtn} onClick={() => { rpsChosenRoundRef.current = rps.round; setRpsChosen(true); submitRPS(playerId.current, "paper"); }}>
               <PaperIcon size={40} />
               <span style={vs.rpsBtnLabel}>PAPER</span>
             </button>
-            <button style={vs.rpsBtn} onClick={() => { setRpsChosen(true); submitRPS(playerId.current, "scissors"); }}>
+            <button style={vs.rpsBtn} onClick={() => { rpsChosenRoundRef.current = rps.round; setRpsChosen(true); submitRPS(playerId.current, "scissors"); }}>
               <ScissorsIcon size={40} />
               <span style={vs.rpsBtnLabel}>SCISSORS</span>
             </button>
           </div>
+          {reactionBar}
         </div>
       );
     }
 
-    if (amInRPS && rpsChosen) {
+    if (amInRPS && effectivelyChosen) {
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <RockIcon size={56} style={{ margin: "0 auto 8px" }} />
           <div style={vs.status}>Waiting for opponent…</div>
+          {reactionBar}
         </div>
       );
     }
 
     // Spectator during RPS
     return (
-      <div style={vs.root}>
+      <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
         <div style={vs.tiebreakerTitle}>ROCK PAPER SCISSORS</div>
         <div style={vs.tiebreakerVs}>{tiebreaker.c0} vs {tiebreaker.c1}</div>
         <div style={vs.lobbySubtitle}>Round {rps.round}</div>
         <div style={vs.status}>Two players are battling it out…</div>
+        {reactionBar}
       </div>
     );
   }
@@ -591,22 +1243,23 @@ export default function PhoneVote() {
       const d2 = Math.abs(os.elapsed2 - 1000);
       const winnerName = os.winner === "p1" ? tiebreaker.c0 : tiebreaker.c1;
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>ONE SECOND</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 300 }}>
             <div style={vs.osResultRow}>
               <span style={vs.osResultName}>{p1Name}</span>
-              <span style={{ ...vs.osResultTime, color: os.winner === "p1" ? "#c8f55a" : "#3a5a3a" }}>{fmtMs(os.elapsed1)}s</span>
+              <span style={{ ...vs.osResultTime, color: os.winner === "p1" ? "#c8f55a" : "#7a9a7a" }}>{fmtMs(os.elapsed1)}s</span>
               <span style={vs.osResultDiff}>±{fmtMs(d1)}s</span>
             </div>
             <div style={vs.osResultRow}>
               <span style={vs.osResultName}>{p2Name}</span>
-              <span style={{ ...vs.osResultTime, color: os.winner === "p2" ? "#c8f55a" : "#3a5a3a" }}>{fmtMs(os.elapsed2)}s</span>
+              <span style={{ ...vs.osResultTime, color: os.winner === "p2" ? "#c8f55a" : "#7a9a7a" }}>{fmtMs(os.elapsed2)}s</span>
               <span style={vs.osResultDiff}>±{fmtMs(d2)}s</span>
             </div>
           </div>
           <div style={vs.champName}>{winnerName} WINS!</div>
+          {reactionBar}
         </div>
       );
     }
@@ -614,12 +1267,12 @@ export default function PhoneVote() {
     // ── Active player — waiting to start ──
     if (amActive && (os.osPhase === "waiting_p1" && amP1 || os.osPhase === "waiting_p2" && amP2)) {
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>ONE SECOND</div>
           <div style={vs.lobbySubtitle}>You're playing for</div>
           <div style={{ fontSize: 20, letterSpacing: 3, color: "#c8f55a", marginBottom: 24 }}>{mySide}</div>
-          <div style={{ fontSize: 11, letterSpacing: 3, color: "#2a4a2a", marginBottom: 16 }}>
+          <div style={{ fontSize: 11, letterSpacing: 3, color: "#6a8a6a", marginBottom: 16 }}>
             Press START, then press again to stop as close to 1.000s as possible
           </div>
           <button
@@ -631,6 +1284,7 @@ export default function PhoneVote() {
           >
             PRESS TO START
           </button>
+          {reactionBar}
         </div>
       );
     }
@@ -638,7 +1292,7 @@ export default function PhoneVote() {
     // ── Active player — timer running ──
     if (amActive && (os.osPhase === "running_p1" && amP1 || os.osPhase === "running_p2" && amP2)) {
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>ONE SECOND</div>
           <div style={vs.osTimerDisplay}>{fmtMs(osDisplayMs)}</div>
@@ -651,6 +1305,7 @@ export default function PhoneVote() {
           >
             PRESS TO STOP
           </button>
+          {reactionBar}
         </div>
       );
     }
@@ -658,17 +1313,18 @@ export default function PhoneVote() {
     // ── Active player — done, waiting for P2 ──
     if (amP1 && (os.osPhase === "done_p1" || os.osPhase === "waiting_p2")) {
       return (
-        <div style={vs.root}>
+        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>ONE SECOND</div>
           <div style={vs.lobbySubtitle}>Your time</div>
           <div style={{ fontSize: 48, fontWeight: "bold", letterSpacing: 2, color: "#c8f55a", fontVariantNumeric: "tabular-nums" }}>
             {fmtMs(os.elapsed1)}s
           </div>
-          <div style={{ fontSize: 12, letterSpacing: 3, color: "#3a5a3a" }}>
+          <div style={{ fontSize: 12, letterSpacing: 3, color: "#7a9a7a" }}>
             ±{fmtMs(Math.abs(os.elapsed1 - 1000))}s from 1.000
           </div>
           <div style={vs.status}>Waiting for {p2Name}…</div>
+          {reactionBar}
         </div>
       );
     }
@@ -676,7 +1332,7 @@ export default function PhoneVote() {
     // ── Spectator / observer — show live timer or results ──
     const isRunning = os.osPhase === "running_p1" || os.osPhase === "running_p2";
     return (
-      <div style={vs.root}>
+      <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
         {muteButton}
         <div style={vs.tiebreakerTitle}>ONE SECOND</div>
         <div style={vs.tiebreakerVs}>{tiebreaker.c0} vs {tiebreaker.c1}</div>
@@ -684,7 +1340,7 @@ export default function PhoneVote() {
           <div style={vs.osTimerDisplay}>{fmtMs(osDisplayMs)}</div>
         )}
         {os.elapsed1 != null && !isRunning && (
-          <div style={{ fontSize: 13, letterSpacing: 2, color: "#3a5a3a", marginTop: 8 }}>
+          <div style={{ fontSize: 13, letterSpacing: 2, color: "#7a9a7a", marginTop: 8 }}>
             {p1Name}: {fmtMs(os.elapsed1)}s
           </div>
         )}
@@ -694,6 +1350,33 @@ export default function PhoneVote() {
           {os.osPhase === "done_p1" && `${p1Name} stopped · ${p2Name} up next…`}
           {os.osPhase === "waiting_p2" && `${p2Name} getting ready…`}
           {os.osPhase === "running_p2" && `${p2Name} is timing!`}
+        </div>
+        {reactionBar}
+      </div>
+    );
+  }
+
+  // ── RPS result linger screen — must come before all vote-screen guards so
+  //    stale voted/match state can't flash through on the first render after
+  //    phase changes to "playing".
+  if (showRpsLinger && rpsLingerDataRef.current) {
+    const lingerRps = rpsLingerDataRef.current.rps;
+    const isPreMatchLinger = !!rpsLingerDataRef.current?.preMatch;
+    const winnerPid = lingerRps.result === "p1" ? lingerRps.player1 : lingerRps.player2;
+    const rpsWinnerName = isPreMatchLinger
+      ? (playerNames?.[winnerPid] || "?")
+      : (lingerRps.result === "p1" ? rpsLingerDataRef.current.c0 : rpsLingerDataRef.current.c1);
+    return (
+      <div style={vs.root}>
+        {muteButton}
+        <div style={vs.tiebreakerTitle}>{isPreMatchLinger ? "PRE-MATCH CHALLENGE" : "RPS RESULT"}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, justifyContent: "center", margin: "-15px 0" }}>
+          <RpsIcon choice={lingerRps.choice1} size={48} />
+          <span style={{ fontSize: 12, letterSpacing: 4, color: "#7a9a7a" }}>vs</span>
+          <RpsIcon choice={lingerRps.choice2} size={48} />
+        </div>
+        <div style={vs.champName}>
+          {isPreMatchLinger ? `${rpsWinnerName}'S VOTE COUNTS DOUBLE!` : `${rpsWinnerName} WINS!`}
         </div>
       </div>
     );
@@ -709,6 +1392,7 @@ export default function PhoneVote() {
           <div style={vs.status}>Waiting for next match…</div>
         </div>
         <button style={vs.logOffBtn} onClick={handleLogOff}>LOG OFF</button>
+        {bumperOverlay}
       </div>
     );
   }
@@ -727,42 +1411,109 @@ export default function PhoneVote() {
 
   // ── Already voted ──
   if (voted) {
+    // Live vote split for the current match
+    const votedMatch = bracket && currentMatchId
+      ? allMatches(bracket).find(m => m.id === currentMatchId)
+      : null;
+    const [vc0, vc1] = votedMatch ? votedMatch.contenders : [null, null];
+    const vv0 = (vc0 && votedMatch?.votes?.[vc0]) || 0;
+    const vv1 = (vc1 && votedMatch?.votes?.[vc1]) || 0;
+    const vvTotal = vv0 + vv1;
+    const myScore = scores && scores[playerId.current];
+    const roundLabelV = getRoundLabel(bracket, currentMatchId);
     return (
-      <div style={vs.root}>
+      <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
         {muteButton}
         <div style={vs.votedBox}>
-          <div style={vs.votedCheck}>✓</div>
-          <div style={vs.votedText}>Vote submitted!</div>
+          <div className="anim-voteCheckIn" style={vs.votedCheck}>✓</div>
+          <div className="anim-slideUp" style={{ ...vs.votedText, animationDelay: "80ms" }}>Vote submitted!</div>
+          {roundLabelV && (
+            <div className={roundLabelV === "THE FINAL" ? "anim-finalGlow" : ""} style={{
+              ...vs.roundBadge,
+              marginBottom: 0,
+              ...(roundLabelV === "THE FINAL" ? { fontSize: 11, letterSpacing: 6, color: "#c8f55a", padding: "6px 20px" } : {}),
+            }}>{roundLabelV}</div>
+          )}
+          {vvTotal > 0 && vc0 && vc1 && (
+            <div style={{ width: "100%", marginTop: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, letterSpacing: 2, color: "#7a9a7a", marginBottom: 4 }}>
+                <span>{vc0}</span>
+                <span>{vc1}</span>
+              </div>
+              <div style={{ display: "flex", height: 6, borderRadius: 3, overflow: "hidden", background: "#0a140a" }}>
+                <div style={{ width: `${(vv0 / vvTotal) * 100}%`, background: "#c8f55a", transition: "width 0.4s ease" }} />
+                <div style={{ flex: 1, background: "#1a4a1a" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, letterSpacing: 1, color: "#7a9a7a", marginTop: 3 }}>
+                <span>{Math.round((vv0 / vvTotal) * 100)}%</span>
+                <span>{Math.round((vv1 / vvTotal) * 100)}%</span>
+              </div>
+            </div>
+          )}
           <div style={vs.votedCount}>
             {votedCount}/{totalPlayers} voted
           </div>
+          {myScore && myScore.total > 0 && (
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "#7a9a7a", marginTop: 4 }}>
+              YOUR ACCURACY: <span style={{ color: "#c8f55a" }}>{Math.round((myScore.correct / myScore.total) * 100)}%</span>
+              {" "}<span style={{ color: "#6a8a6a" }}>({myScore.correct}/{myScore.total})</span>
+            </div>
+          )}
           <div style={vs.waitingNote}>Waiting for others…</div>
         </div>
         {isHost && (
           <button style={vs.skipBtn} onClick={skip}>SKIP →</button>
         )}
+        {bumperOverlay}
+        {reactionBar}
       </div>
     );
   }
 
   // ── Vote screen ──
+  const roundLabel = getRoundLabel(bracket, currentMatchId);
+  const isFinal = roundLabel === "THE FINAL";
   return (
-    <div style={vs.root}>
+    <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
+      <BracketBotVertical color={myColorHex} />
       {muteButton}
+      {roundLabel && (
+        <div className={isFinal ? "anim-finalGlow" : ""} style={{
+          ...vs.roundBadge,
+          ...(isFinal ? { fontSize: 11, letterSpacing: 6, color: "#c8f55a", padding: "6px 20px" } : {}),
+        }}>{roundLabel}</div>
+      )}
+      {doubleVoter === playerId.current && (
+        <div style={{ fontSize: 11, letterSpacing: 4, color: "#c8f55a", background: "#0a1f0a",
+          border: "1px solid #c8f55a", borderRadius: 20, padding: "5px 16px",
+          boxShadow: "0 0 10px #c8f55a33" }}>
+          ⚡ YOUR VOTE COUNTS DOUBLE!
+        </div>
+      )}
+      {doubleVoter && doubleVoter !== playerId.current && (
+        <div style={{ fontSize: 10, letterSpacing: 3, color: "#7a9a7a", background: "#0a1a0a",
+          border: "1px solid #1a2e1a", borderRadius: 20, padding: "4px 14px" }}>
+          ⚡ {playerNames?.[doubleVoter] || "?"} votes double this round
+        </div>
+      )}
       <div style={vs.header}>TAP TO VOTE</div>
-      <RiveTextButton label={c0}
-        onClick={() => vote(c0)}
-        onTouchEnd={(e) => { e.preventDefault(); vote(c0); }} />
+      <button style={vs.choiceBtn} onClick={() => vote(c0)}
+        onTouchEnd={(e) => { e.preventDefault(); vote(c0); }}>
+        {c0}
+      </button>
       <div style={vs.vsLabel}>VS</div>
-      <RiveTextButton label={c1}
-        onClick={() => vote(c1)}
-        onTouchEnd={(e) => { e.preventDefault(); vote(c1); }} />
+      <button style={vs.choiceBtn} onClick={() => vote(c1)}
+        onTouchEnd={(e) => { e.preventDefault(); vote(c1); }}>
+        {c1}
+      </button>
       <div style={vs.footer}>
         {votedCount}/{totalPlayers} voted
       </div>
       {isHost && (
         <button style={vs.skipBtn} onClick={skip}>SKIP →</button>
       )}
+      {bumperOverlay}
+      {reactionBar}
     </div>
   );
 }
@@ -773,24 +1524,27 @@ const _tap  = { WebkitTapHighlightColor: "transparent", touchAction: "manipulati
 const _col  = { textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 };
 
 const _sizeBtnBase = {
-  flex: 1, maxWidth: 90, padding: "10px 0", fontSize: 18, fontWeight: "bold",
+  width: 80, padding: "10px 20px", fontSize: 18, fontWeight: "bold",
   letterSpacing: 2, fontFamily: _mono, borderRadius: 6, cursor: "pointer", ..._tap,
 };
 const _navBtnBase = {
   fontSize: 12, letterSpacing: 3, fontFamily: _mono, background: "transparent",
-  color: "#7a9a7a", border: "1px solid #3a5a3a", borderRadius: 6, cursor: "pointer", ..._tap,
+  color: "#7a9a7a", border: "1px solid #7a9a7a", borderRadius: 6, cursor: "pointer", ..._tap,
 };
 
 const vs = {
   root: {
-    minHeight: "100dvh", background: "#060e06", color: "#c8f55a", fontFamily: _mono,
-    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-    padding: 24, boxSizing: "border-box", gap: 16,
+    height: "100dvh", background: "#060e06", color: "#c8f55a", fontFamily: _mono,
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start",
+    padding: "max(56px, calc(env(safe-area-inset-top) + 32px)) 20px max(24px, env(safe-area-inset-bottom))",
+    boxSizing: "border-box", gap: 10,
     userSelect: "none", position: "relative", WebkitUserSelect: "none",
+    textAlign: "center", overflowY: "auto", WebkitOverflowScrolling: "touch",
   },
+  roundBadge:  { fontSize: 9, letterSpacing: 5, color: "#c8f55a", background: "#0a1f0a", border: "1px solid #1a3a1a", padding: "4px 14px", borderRadius: 20, marginBottom: -4 },
   header:      { fontSize: 12, letterSpacing: 6, color: "#7a9a7a", marginBottom: 8 },
   choiceBtn: {
-    width: "100%", maxWidth: 340, padding: "36px 20px", fontSize: 22,
+    width: 280, padding: "20px 20px", fontSize: 20,
     fontWeight: "bold", letterSpacing: 3, fontFamily: _mono,
     background: "#0f1f0f", color: "#c8f55a", border: "2px solid #1a2e1a",
     borderRadius: 8, cursor: "pointer", transition: "all 0.15s", ..._tap,
@@ -805,25 +1559,35 @@ const vs = {
   },
   lobbyTitle:    { fontSize: 32, fontWeight: "bold", letterSpacing: 10, textShadow: "0 0 20px #c8f55a44", marginBottom: 8 },
   lobbySubtitle: { fontSize: 12, color: "#7a9a7a", letterSpacing: 3, marginBottom: 12 },
-  // ── Original category button design (kept for reference) ──
-  categoryBtn: {
-    width: "100%", maxWidth: 300, padding: "18px 20px", fontSize: 16,
-    fontWeight: "bold", letterSpacing: 4, fontFamily: _mono,
-    background: "#0f1f0f", color: "#c8f55a", border: "1px solid #1a2e1a",
-    borderRadius: 6, cursor: "pointer", transition: "all 0.15s", ..._tap,
-  },
   categorySelected: {
-    textAlign: "center", padding: "16px 28px",
+    width: 280, boxSizing: "border-box", textAlign: "center", padding: "16px 28px",
     border: "1px solid #c8f55a", boxShadow: "0 0 20px #c8f55a22", marginBottom: 8,
   },
   catLabel:        { fontSize: 10, letterSpacing: 4, color: "#7a9a7a", marginBottom: 6 },
   catName:         { fontSize: 22, fontWeight: "bold", letterSpacing: 4 },
   playerCountLobby:{ fontSize: 14, color: "#7a9a7a", letterSpacing: 2 },
   startGameBtn: {
-    padding: "16px 36px", fontSize: 18, fontWeight: "bold", letterSpacing: 4,
+    width: "100%", padding: "16px 20px", fontSize: 18, fontWeight: "bold", letterSpacing: 4,
     fontFamily: _mono, background: "#0f1f0f", color: "#c8f55a",
     border: "2px solid #c8f55a", borderRadius: 6, cursor: "pointer",
     boxShadow: "0 0 16px #c8f55a22", ..._tap,
+  },
+  categoryBtn: {
+    width: 280, padding: "14px 24px", fontSize: 16, fontWeight: "bold", letterSpacing: 3,
+    fontFamily: _mono, background: "#0f1f0f", color: "#c8f55a",
+    border: "2px solid #c8f55a", borderRadius: 6, cursor: "pointer",
+    boxShadow: "0 0 16px #c8f55a22", textAlign: "center", ..._tap,
+  },
+  tagBtn: {
+    padding: "6px 14px", fontSize: 10, fontWeight: "bold", letterSpacing: 3,
+    fontFamily: _mono, background: "transparent", color: "#7a9a7a",
+    border: "1px solid #2a3a2a", borderRadius: 20, cursor: "pointer", ..._tap,
+  },
+  tagBtnActive: {
+    padding: "6px 14px", fontSize: 10, fontWeight: "bold", letterSpacing: 3,
+    fontFamily: _mono, background: "#0f1f0f", color: "#c8f55a",
+    border: "1px solid #c8f55a", borderRadius: 20, cursor: "pointer",
+    boxShadow: "0 0 8px #c8f55a22", ..._tap,
   },
   backBtn:  { ..._navBtnBase, padding: "10px 24px" },
   skipBtn:  { ..._navBtnBase, padding: "10px 28px", marginTop: 8 },
@@ -850,14 +1614,14 @@ const vs = {
   tiebreakerVs:    { fontSize: 16, letterSpacing: 3, color: "#7a9a7a" },
   tiebreakerOr:    { fontSize: 12, color: "#6a8a6a", letterSpacing: 4, margin: "4px 0" },
   // ── RPS ──
-  rpsRow: { display: "flex", gap: 16, marginTop: 8 },
+  rpsRow: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginTop: 8 },
   rpsBtn: {
-    display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-    padding: "24px 20px", background: "#0f1f0f", border: "2px solid #1a2e1a",
-    borderRadius: 12, cursor: "pointer", color: "#c8f55a",
-    fontFamily: _mono, transition: "all 0.15s", minWidth: 90, ..._tap,
+    display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 14,
+    width: 280, padding: "18px 24px", background: "#0f1f0f", border: "2px solid #1a2e1a",
+    borderRadius: 8, cursor: "pointer", color: "#c8f55a",
+    fontFamily: _mono, transition: "all 0.15s", ..._tap,
   },
-  rpsBtnLabel: { fontSize: 10, letterSpacing: 3, fontWeight: "bold" },
+  rpsBtnLabel: { fontSize: 14, letterSpacing: 4, fontWeight: "bold" },
   // ── One Second ──
   osTimerDisplay: {
     fontSize: 72, fontWeight: "bold", letterSpacing: 2, color: "#c8f55a",
@@ -865,7 +1629,7 @@ const vs = {
     textShadow: "0 0 30px #c8f55a66", lineHeight: 1, margin: "16px 0",
   },
   osBigBtn: {
-    width: "100%", maxWidth: 300, padding: "28px 0", fontSize: 18,
+    width: 280, padding: "28px 0", fontSize: 18,
     fontWeight: "bold", letterSpacing: 4, fontFamily: _mono,
     background: "#0a1f0a", color: "#c8f55a", border: "2px solid #c8f55a",
     borderRadius: 8, cursor: "pointer", ..._tap,
@@ -873,7 +1637,7 @@ const vs = {
   osResultRow:  { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#0a140a", border: "1px solid #1a2e1a", borderRadius: 4 },
   osResultName: { flex: 1, fontSize: 12, letterSpacing: 2, color: "#7a9a7a" },
   osResultTime: { fontSize: 20, fontWeight: "bold", letterSpacing: 1, fontVariantNumeric: "tabular-nums" },
-  osResultDiff: { fontSize: 11, letterSpacing: 1, color: "#2a4a2a" },
+  osResultDiff: { fontSize: 11, letterSpacing: 1, color: "#6a8a6a" },
   // ── Name entry ──
   nameInput: {
     width: "100%", maxWidth: 280, padding: "16px 20px", fontSize: 24,
@@ -883,23 +1647,39 @@ const vs = {
   },
   nameError: { fontSize: 16, color: "#ff4444", letterSpacing: 3, fontWeight: "bold", textAlign: "center", padding: "8px 0" },
   muteBtn: {
-    position: "absolute", top: 16, right: 16, zIndex: 10,
+    position: "absolute", top: "max(16px, env(safe-area-inset-top))", right: 16, zIndex: 10,
     background: "transparent", border: "1px solid #1a2e1a", borderRadius: 6,
     padding: "6px 10px", fontSize: 20, cursor: "pointer", color: "#c8f55a", lineHeight: 1, ..._tap,
   },
   // ── Custom bracket ──
   customGrid: {
     display: "grid", gridTemplateColumns: "1fr 1fr",
-    gap: 6, width: "100%", maxWidth: 340, maxHeight: "45vh", overflowY: "auto", padding: "4px 0",
+    gap: 6, width: "100%", maxHeight: "45vh", overflowY: "auto", padding: "4px 0",
   },
   customItemInput: {
     width: "100%", padding: 8, fontSize: 12, fontFamily: _mono,
     background: "#0f1f0f", color: "#c8f55a", border: "1px solid #1a2e1a",
     borderRadius: 4, outline: "none", textAlign: "center", boxSizing: "border-box",
   },
+  // ── Lobby player names ──
+  lobbyNamesList: {
+    display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center",
+    maxWidth: 320, marginTop: -4,
+  },
+  lobbyNameTag: {
+    fontSize: 11, letterSpacing: 2, color: "#c8f55a",
+    padding: "3px 10px", borderRadius: 3,
+  },
+  // ── Copy bracket ──
+  copyBtn: {
+    padding: "12px 28px", fontSize: 13, fontWeight: "bold", letterSpacing: 4,
+    fontFamily: _mono, background: "#0a140a", color: "#c8f55a",
+    border: "1px solid #c8f55a", borderRadius: 6, cursor: "pointer", ..._tap,
+    marginTop: 8,
+  },
   // ── Bracket size selector ──
   sizeRow:      { display: "flex", gap: 8, marginTop: 8 },
-  sizeLabel:    { fontSize: 9, letterSpacing: 4, color: "#2a4a2a", marginTop: -4, marginBottom: 4 },
-  sizeBtn:      { ..._sizeBtnBase, background: "#0a140a", color: "#3a5a3a", border: "1px solid #1a2e1a" },
+  sizeLabel:    { fontSize: 9, letterSpacing: 4, color: "#6a8a6a", marginTop: -4, marginBottom: 4 },
+  sizeBtn:      { ..._sizeBtnBase, background: "#0a140a", color: "#7a9a7a", border: "1px solid #1a2e1a" },
   sizeBtnActive:{ ..._sizeBtnBase, background: "#0f1f0f", color: "#c8f55a", border: "2px solid #c8f55a" },
 };

@@ -7,10 +7,12 @@ export default defineConfig({
   plugins: [react()],
   assetsInclude: ['**/*.riv'],
   build: {
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
         vote: resolve(__dirname, 'vote.html'),
+        admin: resolve(__dirname, 'admin.html'),
       },
     },
   },

@@ -7,58 +7,8 @@ function capitalizeOption(str) {
     .join(' ');
 }
 
-export const CATEGORIES = {
-  "Vegetables": [
-    "Carrot", "Broccoli", "Cauliflower", "Spinach",
-    "Kale", "Lettuce", "Cabbage", "Brussels Sprouts",
-    "Asparagus", "Green Beans", "Peas", "Corn",
-    "Zucchini", "Cucumber", "Bell Pepper", "Chili Pepper",
-    "Eggplant", "Tomato", "Potato", "Sweet Potato",
-    "Onion", "Garlic", "Leek", "Celery",
-    "Radish", "Beet", "Turnip", "Parsnip",
-    "Mushroom", "Pumpkin", "Squash", "Okra",
-  ].map(capitalizeOption),
-  "Fruits": [
-    "Apple", "Banana", "Orange", "Strawberry",
-    "Blueberry", "Raspberry", "Blackberry", "Grapes",
-    "Watermelon", "Cantaloupe", "Honeydew", "Pineapple",
-    "Mango", "Papaya", "Kiwi", "Peach",
-    "Plum", "Nectarine", "Cherry", "Apricot",
-    "Pomegranate", "Lemon", "Lime", "Grapefruit",
-    "Tangerine", "Coconut", "Fig", "Date",
-    "Dragon Fruit", "Lychee", "Passion Fruit", "Guava",
-  ].map(capitalizeOption),
-  "Painters": [
-    "Leonardo da Vinci", "Michelangelo", "Raphael", "Rembrandt",
-    "Vincent van Gogh", "Pablo Picasso", "Claude Monet", "Salvador Dalí",
-    "Jackson Pollock", "Andy Warhol", "Artemisia Gentileschi", "Élisabeth Vigée Le Brun",
-    "Berthe Morisot", "Mary Cassatt", "Georgia O'Keeffe", "Frida Kahlo",
-    "Hilma af Klint", "Yayoi Kusama", "Agnes Martin", "Joan Mitchell",
-    "Gustav Klimt", "Edvard Munch", "Paul Cézanne", "Henri Matisse",
-    "Caravaggio", "Diego Velázquez", "Francisco Goya", "Jean-Michel Basquiat",
-    "Paul Gauguin", "Tamara de Lempicka", "Sofonisba Anguissola", "Bridget Riley",
-  ].map(capitalizeOption),
-  "Oscar Winners": [
-    "Gone with the Wind", "Casablanca", "The Godfather", "The Godfather II",
-    "Schindler's List", "Forrest Gump", "Titanic", "Gladiator",
-    "A Beautiful Mind", "LOTR: Return of King", "No Country for Old Men", "The Hurt Locker",
-    "Argo", "Birdman", "12 Years a Slave", "The Shape of Water",
-    "Green Book", "Parasite", "Nomadland", "Everything Everywhere",
-    "American Beauty", "Rocky", "Out of Africa", "Lawrence of Arabia",
-    "One Flew Over Cuckoo's", "The English Patient", "Silence of the Lambs", "Million Dollar Baby",
-    "Slumdog Millionaire", "The Departed", "Mad Max: Fury Road", "CODA",
-  ].map(capitalizeOption),
-  "Pokemon": [
-    "Pikachu", "Charizard", "Bulbasaur", "Squirtle",
-    "Jigglypuff", "Meowth", "Eevee", "Snorlax",
-    "Mewtwo", "Gengar", "Lucario", "Greninja",
-    "Togepi", "Psyduck", "Vulpix", "Arcanine",
-    "Alakazam", "Machamp", "Gyarados", "Dragonite",
-    "Blastoise", "Venusaur", "Lapras", "Scyther",
-    "Mew", "Ditto", "Magikarp", "Umbreon",
-    "Espeon", "Infernape", "Tyranitar", "Garchomp",
-  ].map(capitalizeOption),
-  "random": [
+// Random pool — used only for the ????? mode
+const RANDOM_POOL = [
     // Animals
     "pangolin", "narwhal", "quokka", "axolotl", "okapi", "dog", "cat", "rabbit", "hamster", "horse", "cow", "pig", "sheep", "chicken", "goldfish", "parrot", "turtle", "gecko", "capybara", "meerkat", "wolverine", "manatee", "ocelot", "elephant", "lion", "tiger", "bear", "wolf", "dolphin", "penguin", "giraffe", "zebra", "puffin", "koala", "kangaroo", "panda", "fox", "deer", "owl", "eagle", "wombat", "platypus", "cheetah", "gorilla", "crocodile", "flamingo", "seahorse", "otter", "hedgehog", "squirrel",
     // Famous People
@@ -83,31 +33,63 @@ export const CATEGORIES = {
     "pizza", "sushi", "mango", "burrito", "croissant", "ramen", "tacos", "waffles", "hummus", "lasagna", "guacamole", "pancakes", "risotto", "falafel", "pho", "tiramisu", "bruschetta", "enchilada", "paella", "dumplings", "gelato", "quiche", "brisket", "tempura", "shawarma", "cornbread", "ceviche", "gnocchi", "baklava", "pretzel", "kimchi", "moussaka", "chowder", "crepe", "biryani",
     // Movies
     "Inception", "Avatar", "Casablanca", "Gladiator", "Interstellar", "Titanic", "Jaws", "Vertigo", "Clueless", "Grease", "Spotlight", "Braveheart", "Alien", "Psycho", "Singin", "Moonlight", "Parasite", "Amélie", "Fargo", "Ratatouille", "Rocky", "Beetlejuice", "Dunkirk", "Goodfellas", "Coco", "Aladdin", "Memento", "Selma", "Chicago", "Shrek", "Platoon", "Arrival", "Elf", "Wall-E"
-  ].map(capitalizeOption),
+].map(capitalizeOption);
+
+// Per-player accent colors (index assigned on join, 0-based)
+export const PLAYER_COLORS = [
+  "#c8f55a", // lime  (brand)
+  "#f55a8a", // pink
+  "#5ae8f5", // cyan
+  "#f5c85a", // gold
+  "#b05af5", // purple
+  "#5a8af5", // blue
+  "#f5785a", // orange
+  "#5af596", // mint
+  "#f54a4a", // red
+  "#ff9933", // amber
+  "#f0f055", // yellow
+  "#44e8aa", // seafoam
+  "#44aaff", // sky
+  "#e844e8", // magenta
+  "#ff88bb", // rose
+  "#88ffee", // aqua
+  "#bb88ff", // lavender
+  "#ff6666", // coral
+  "#aaee44", // yellow-green
+  "#55ddff", // ice
+];
+
+// Subtle background accent color per category
+export const CATEGORY_ACCENT = {
+  "Vegetables":    "#2d6a2d",
+  "Fruits":        "#c86020",
+  "Painters":      "#5a2d8a",
+  "Oscar Winners": "#8a6a00",
+  "Pokemon":       "#e8a000",
+  "TV Shows":      "#005080",
+  "Fast Food":     "#8a3000",
+  "Disney Movies": "#002a80",
+  "Video Games":   "#500080",
+  "?????":         "#2a2a5a",
+  "Custom":        "#3a2a1a",
 };
 
-export const CATEGORY_NAMES = Object.keys(CATEGORIES);
-
-// Gather only the specified subgroups from the 'random' category for ??????
+// Gather only the specified subgroups from the random pool for ??????
 export function getAllOptions() {
-  // Indices for each subgroup in the random category array
-  // animals: 0-49, famous people: 50-89, emotions: 90-109, life events: 110-128,
-  // cars: 129-148, clothing: 149-171, countries: 172-196, instruments: 197-221,
-  // bands: 222-239, sports: 240-267, foods: 268-302, movies: 303-end
-  const random = CATEGORIES["random"];
+  const r = RANDOM_POOL;
   return [
-    ...random.slice(0, 50),      // animals
-    ...random.slice(50, 90),     // famous people
-    ...random.slice(90, 110),    // emotions
-    ...random.slice(110, 129),   // life events
-    ...random.slice(129, 149),   // cars
-    ...random.slice(149, 172),   // clothing
-    ...random.slice(172, 197),   // countries
-    ...random.slice(197, 222),   // instruments
-    ...random.slice(222, 240),   // bands
-    ...random.slice(240, 268),   // sports
-    ...random.slice(268, 303),   // foods
-    ...random.slice(303)         // movies
+    ...r.slice(0, 50),      // animals
+    ...r.slice(50, 90),     // famous people
+    ...r.slice(90, 110),    // emotions
+    ...r.slice(110, 129),   // life events
+    ...r.slice(129, 149),   // cars
+    ...r.slice(149, 172),   // clothing
+    ...r.slice(172, 197),   // countries
+    ...r.slice(197, 222),   // instruments
+    ...r.slice(222, 240),   // bands
+    ...r.slice(240, 268),   // sports
+    ...r.slice(268, 303),   // foods
+    ...r.slice(303),        // movies
   ];
 }
 

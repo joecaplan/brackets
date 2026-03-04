@@ -6,7 +6,11 @@
       "mcp__figma__get_design_context",
       "Bash(curl:*)",
       "Bash(npm run dev:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(npm run build:*)",
+      "Bash(python3:*)",
+      "Bash(git -C \"c:/Users/JosephCaplan/OneDrive - ayahealthcare.com/Desktop/ClaudesBracket\" remote -v)",
+      "Bash(git remote add:*)"
     ]
   }
 }

@@ -1,5 +1,4 @@
-# Serve /vote as vote.html
-/vote    /vote.html    200
-
-# SPA fallback for main app
-/*       /index.html   200
+/vote     /vote.html    200
+/vote/    /vote.html    200
+/admin    /admin.html   200
+/admin/   /admin.html   200

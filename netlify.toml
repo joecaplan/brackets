@@ -1,0 +1,27 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[functions]
+  directory = "netlify/functions"
+
+# Serve vote.html at /vote (Vite builds it as dist/vote.html)
+[[redirects]]
+  from = "/vote"
+  to   = "/vote.html"
+  status = 200
+
+[[redirects]]
+  from = "/vote/"
+  to   = "/vote.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to   = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin/"
+  to   = "/admin.html"
+  status = 200
