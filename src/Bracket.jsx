@@ -1215,6 +1215,12 @@ export default function BracketApp() {
     });
   }, [liveReactions]);
 
+  // Clear chat log when the active match changes (new bracket, or bracket ends early)
+  useEffect(() => {
+    setChatLog([]);
+    seenReactionIds.current.clear();
+  }, [currentMatch]);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
 import bracketBotRiv from "./assets/rive/bracketbot_vertical.riv";
 import { useGameState } from "./useGameState.js";
@@ -210,18 +211,20 @@ function Confetti({ active }) {
 // ─── ReactionBar ─────────────────────────────────────────────────────────────
 function ReactionBar({ sendReaction, myColor }) {
   const [text, setText] = useState("");
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [bottom, setBottom] = useState(0);
   const _mono = "'PT Mono', monospace";
 
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
     const update = () => {
-      const offset = window.innerHeight - (vv.offsetTop + vv.height);
-      setKeyboardOffset(Math.max(0, offset));
+      // How far the visual viewport's bottom is from the layout viewport's bottom
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setBottom(kb);
     };
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
+    update();
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
@@ -246,10 +249,10 @@ function ReactionBar({ sendReaction, myColor }) {
   const iconSz = "clamp(32px, calc(20vw - 6px), 104px)";
   const iconSzHalf = "clamp(16px, calc(10vw - 3px), 52px)";
 
-  return (
-    <div style={{ position: "fixed", bottom: keyboardOffset, left: 0, right: 0, zIndex: 500,
+  return createPortal(
+    <div style={{ position: "fixed", bottom, left: 0, right: 0, zIndex: 500,
       background: "#060e06", borderTop: "1px solid #1a2e1a",
-      padding: keyboardOffset > 0 ? "0px 12px 8px" : "0px 12px max(32px, calc(env(safe-area-inset-bottom) + 20px))", boxSizing: "border-box" }}>
+      padding: bottom > 0 ? "0px 12px 8px" : "0px 12px max(32px, calc(env(safe-area-inset-bottom) + 20px))", boxSizing: "border-box" }}>
       <div style={{ display: "flex", gap: 0, marginBottom: -5 }}>
         <button style={iconBtn} onClick={() => send("smile")} onTouchEnd={(e) => { e.preventDefault(); send("smile"); }}>
           <div style={{ width: iconSz, height: iconSz, display: "flex" }}><SmileIcon size="100%" color={myColor} /></div>
@@ -287,7 +290,8 @@ function ReactionBar({ sendReaction, myColor }) {
           SEND
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
