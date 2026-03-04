@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
-import bracketBotRiv from "./assets/rive/bracketBot_vertical.riv";
+import bracketBotRiv from "./assets/rive/bracketbot_vertical.riv";
 import { useGameState } from "./useGameState.js";
 import { RockIcon, PaperIcon, ScissorsIcon, RpsIcon, SmileIcon, FrownIcon, PoopIcon, SkullIcon, HourglassIcon } from "./RpsIcons.jsx";
 import { allMatches } from "./bracketLogic.js";
