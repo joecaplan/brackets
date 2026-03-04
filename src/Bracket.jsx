@@ -1628,6 +1628,8 @@ export default function BracketApp() {
   const handlePlayAgain = () => {
     startAgainSfx.current.currentTime = 0;
     startAgainSfx.current.play().catch(() => {});
+    setChatLog([]);
+    seenReactionIds.current.clear();
     playAgain();
   };
 
