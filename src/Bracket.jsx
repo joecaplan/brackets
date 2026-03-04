@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
-import bracketBotMainRiv     from "./assets/rive/bracketBot_main.riv";
-import bracketBotMapRiv      from "./assets/rive/bracketBot_map.riv";
-import bracketBotVerticalRiv from "./assets/rive/bracketBot_vertical.riv";
+import bracketBotMainRiv     from "./assets/rive/bracketbot_main.riv";
+import bracketBotMapRiv      from "./assets/rive/bracketbot_map.riv";
+import bracketBotVerticalRiv from "./assets/rive/bracketbot_vertical.riv";
 import { allMatches } from "./bracketLogic.js";
 import { useGameState } from "./useGameState.js";
 import { PLAYER_COLORS } from "./categories.js";
