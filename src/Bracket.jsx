@@ -2420,7 +2420,7 @@ export default function BracketApp() {
       </div>
 
       {/* Player list - top left */}
-      {Object.keys(playerNames).length > 0 && !champion && (
+      {Object.keys(playerNames).length > 0 && !champion && windowWidth >= 900 && (
         <div style={s.playerListBox}>
           <div style={s.playerListTitle}>PLAYERS</div>
           {Object.entries(playerNames).map(([pid, name], i) => {
@@ -2435,8 +2435,8 @@ export default function BracketApp() {
         </div>
       )}
 
-      {/* BracketBot — top-right corner box (hidden on champion screen) */}
-      {!champion && (
+      {/* BracketBot — top-right corner box (hidden on champion screen or narrow screens) */}
+      {!champion && windowWidth >= 900 && (
         <div style={{
           position: "absolute", top: 68, right: 16, zIndex: 20,
           border: "1px solid #1a2e1a", background: "#060e06",
