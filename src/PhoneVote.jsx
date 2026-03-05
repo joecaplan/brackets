@@ -57,6 +57,7 @@ function pickBumperSrc(bracket, rIdx, isFinal) {
   return null;
 }
 import chooseAnswerSrc from "./assets/audio/SFX/ChooseAnswer.wav";
+import iconPencilUrl            from "./assets/SVG/iconPencil.svg";
 import cursorPointerRaw    from "./assets/SVG/Cursor_Pointer.svg?raw";
 import cursorDragRaw       from "./assets/SVG/cursorDrag.svg?raw";
 import cursorHoverRaw      from "./assets/SVG/Cursor_Hover.svg?raw";
@@ -413,7 +414,7 @@ export default function PhoneVote() {
     phase, category, bracketSize, playerCount, totalPlayers, isHost,
     bracket, currentMatchId, champion, votedCount, tiebreaker,
     connected, playerNames, scores, playerColors, voters, doubleVoter,
-    customCategories,
+    customCategories, bracketOfTheWeek, randomCategory,
     joinGame, leaveGame, selectCategory, setBracketSize, startGame, setCustomItems,
     vote: firebaseVote, skip, hostPickWinner, startRPS, submitRPS,
     startOneSecond, startOSTimer, stopOSTimer, playAgain, sendReaction,
@@ -968,17 +969,65 @@ export default function PhoneVote() {
           {/* Category list — from Firebase only */}
           {(() => {
             const allCustom = Object.entries(customCategories || {});
+            const isPinned = (key) => key === bracketOfTheWeek || key === randomCategory;
             const filtered = searchQuery
-              ? allCustom.filter(([, c]) => {
+              ? allCustom.filter(([key, c]) => {
+                  if (isPinned(key)) return false;
                   const q = searchQuery.toLowerCase();
                   return c.name?.toLowerCase().includes(q)
                     || (c.tags || []).some(t => t.toLowerCase().includes(q))
                     || (c.hiddenTags || []).some(t => t.toLowerCase().includes(q));
                 })
-              : allCustom.filter(([, c]) => selectedTag === null || (c.tags || []).includes(selectedTag));
+              : allCustom.filter(([key, c]) => !isPinned(key) && (selectedTag === null || (c.tags || []).includes(selectedTag)));
             filtered.sort((a, b) => (a[1].name || "").localeCompare(b[1].name || ""));
+            const botwCat = bracketOfTheWeek && customCategories?.[bracketOfTheWeek];
             return (
               <>
+                {botwCat && !searchQuery && selectedTag === null && (
+                  <button
+                    style={{
+                      width: "100%", maxWidth: 320, padding: "14px 16px", marginBottom: 4,
+                      background: "linear-gradient(135deg, #1a1500 0%, #0f1f0f 100%)",
+                      border: "2px solid #ffd700", borderRadius: 8, cursor: "pointer",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                      fontFamily: "'PT Mono','Courier New',monospace", textAlign: "center",
+                    }}
+                    onClick={() => { setRandomMode(false); selectCategory(bracketOfTheWeek); }}>
+                    <div style={{ fontSize: 9, letterSpacing: 3, color: "#ffd700" }}>★ BRACKET OF THE WEEK ★</div>
+                    <div style={{ fontSize: 16, fontWeight: "bold", letterSpacing: 2, color: "#ffd700" }}>
+                      {botwCat.name?.toUpperCase()}
+                    </div>
+                  </button>
+                )}
+                {!searchQuery && selectedTag === null && (
+                  <button
+                    style={{
+                      ...vs.categoryBtn,
+                      background: "linear-gradient(135deg, #0a1a2a 0%, #0f1f2f 100%)",
+                      border: "2px solid #4a9eff",
+                      color: "#4a9eff",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                    onClick={() => setShowCustomInput(true)}>
+                    <img src={iconPencilUrl} alt="" style={{ width: 16, height: 16, marginRight: 6, flexShrink: 0,
+                      filter: "brightness(0) saturate(100%) invert(60%) sepia(80%) saturate(400%) hue-rotate(185deg) brightness(110%)" }} />
+                    CUSTOM
+                  </button>
+                )}
+                {randomCategory && customCategories?.[randomCategory] && !searchQuery &&
+                  (selectedTag === null || (customCategories[randomCategory].tags || []).includes(selectedTag)) && (
+                  <button
+                    style={{
+                      ...vs.categoryBtn,
+                      background: "linear-gradient(135deg, #1a0a2a 0%, #1f0f2f 100%)",
+                      border: "2px solid #c084fc",
+                      color: "#c084fc",
+                      letterSpacing: 0,
+                    }}
+                    onClick={() => { setRandomMode(false); selectCategory(randomCategory); }}>
+                    {customCategories[randomCategory].name?.toUpperCase()}
+                  </button>
+                )}
                 {filtered.length === 0 && (
                   <div style={{ color: "#3a5a1a", fontSize: 13, letterSpacing: 1, padding: "8px 0" }}>
                     {searchQuery ? `No results for "${searchQuery}"` : "No brackets for this tag."}
@@ -992,16 +1041,6 @@ export default function PhoneVote() {
                     {c.name.toUpperCase()}
                   </button>
                 ))}
-                <button
-                  style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${filtered.length * 35}ms both`, opacity: 0.6 }}
-                  onClick={() => selectCategory("?????")}>
-                  ?????
-                </button>
-                <button
-                  style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${(filtered.length + 1) * 35}ms both`, opacity: 0.6 }}
-                  onClick={() => setShowCustomInput(true)}>
-                  CUSTOM BRACKET
-                </button>
               </>
             );
           })()}

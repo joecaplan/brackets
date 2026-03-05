@@ -149,6 +149,8 @@ export function useGameState(playerId = null, roomCode = null) {
   const [doubleVoter, setDoubleVoter]       = useState(null);
   const [customCategories, setCustomCategories] = useState({});
   const customCategoriesRef = useRef({});
+  const [bracketOfTheWeek, setBracketOfTheWeek] = useState(null);
+  const [randomCategory, setRandomCategory] = useState(null);
   const minigameSettingsRef = useRef({ enabled: true, allowRps: true, allowOneSecond: true, frequency: "medium" });
   const setMinigameSettings = useCallback((s) => { minigameSettingsRef.current = s; }, []);
   const [liveReactions, setLiveReactions]   = useState([]);
@@ -215,6 +217,22 @@ export function useGameState(playerId = null, roomCode = null) {
       const data = snap.val() || {};
       customCategoriesRef.current = data;
       setCustomCategories(data);
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Bracket of the week subscription (global) ──
+  useEffect(() => {
+    const unsub = onValue(ref(db, "bracketOfTheWeek"), (snap) => {
+      setBracketOfTheWeek(snap.val() || null);
+    });
+    return () => unsub();
+  }, []);
+
+  // ── Random category subscription (global) ──
+  useEffect(() => {
+    const unsub = onValue(ref(db, "randomCategory"), (snap) => {
+      setRandomCategory(snap.val() || null);
     });
     return () => unsub();
   }, []);
@@ -287,7 +305,7 @@ export function useGameState(playerId = null, roomCode = null) {
       if (!items || items.length !== size) return;
     } else {
       const customCat = customCategoriesRef.current[data.category];
-      if (customCat?.items) items = customCat.items.slice(0, size);
+      if (customCat?.items) items = pickRandom(customCat.items, size);
     }
     if (!items) return;
     const players = data.players || {};
@@ -820,7 +838,7 @@ export function useGameState(playerId = null, roomCode = null) {
     phase, category, bracketSize, playerCount, totalPlayers, hostId, isHost,
     bracket, currentMatchId, champion, votedCount, connected, tiebreaker,
     playerNames, scores, globalStats, voters, playerColors, matchNote,
-    doubleVoter, liveReactions, customCategories,
+    doubleVoter, liveReactions, customCategories, bracketOfTheWeek, randomCategory,
     joinGame, leaveGame, selectCategory, setBracketSize, startGame, setCustomItems,
     vote, startNext, skip, hostPickWinner, startRPS, submitRPS,
     startOneSecond, startOSTimer, stopOSTimer, resolvePreChallenge,

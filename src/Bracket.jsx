@@ -270,7 +270,18 @@ function Slot({ x, y, label, isWinner, isLoser, isActive, pct, showPct, dimmed }
   const bg       = isEmpty ? "#0d180d" : isWinner ? "#c8f55a" : isLoser ? "#090f09" : isActive ? "#122012" : "#0d180d";
   const fg       = isWinner ? "#060e06" : isLoser ? "#7a9a7a" : isEmpty ? "#1a2a1a" : "#c8f55a";
   const stroke   = !isEmpty && (isWinner || isActive) ? "#c8f55a" : "#1a2e1a";
-  const text     = isEmpty ? "" : (label.length > 15 ? label.slice(0, 14) + "\u2026" : label);
+  const maxChars = 15;
+  const words    = isEmpty ? [] : label.split(" ");
+  let line1 = "", line2 = "";
+  if (!isEmpty) {
+    for (const w of words) {
+      if (!line1 || (line1 + " " + w).length <= maxChars) {
+        line1 = line1 ? line1 + " " + w : w;
+      } else {
+        line2 = line2 ? line2 + " " + w : w;
+      }
+    }
+  }
   const opacity  = dimmed && !isEmpty ? 0.25 : 1;
 
   return (
@@ -289,11 +300,13 @@ function Slot({ x, y, label, isWinner, isLoser, isActive, pct, showPct, dimmed }
       )}
       {!isEmpty && (
         <text
-          x={x + 10} y={y + SLOT_H / 2 + 5}
+          x={x + 10}
+          y={line2 ? y + SLOT_H / 2 - 3 : y + SLOT_H / 2 + 5}
           fill={fg} fontSize={12} fontFamily="'PT Mono', monospace"
           fontWeight={isWinner ? "bold" : "normal"}
         >
-          {isWinner ? "\u25B6 " : "  "}{text}
+          <tspan x={x + 8}>{isWinner ? "\u25B6 " : ""}{line1.trim()}</tspan>
+          {line2 && <tspan x={x + 8} dy="14">{isWinner ? "  " : ""}{line2.trim()}</tspan>}
         </text>
       )}
       {showPct && !isEmpty && (
@@ -1293,7 +1306,8 @@ export default function BracketApp() {
   const [minigameAllowRps,       setMinigameAllowRps]       = useState(true);
   const [minigameAllowOneSecond, setMinigameAllowOneSecond] = useState(true);
   const [minigameFrequency,      setMinigameFrequency]      = useState("medium");
-  const [showBumpers, setShowBumpers] = useState(true); // seconds; 0 = off
+  const [showBumpers, setShowBumpers] = useState(() => localStorage.getItem("bracket_showBumpers") !== "false");
+  const showBumpersRef = useRef(localStorage.getItem("bracket_showBumpers") !== "false");
   const [autoAdvanceRemaining, setAutoAdvanceRemaining] = useState(null);
   const [chatLog, setChatLog] = useState([]);
   const chatEndRef = useRef(null);
@@ -1563,7 +1577,7 @@ export default function BracketApp() {
     }
     if (prevPhase.current === "lobby" && phase !== "lobby") {
       if (!muted) startSfx.current?.play().catch(() => {});
-      if (firebaseBootstrappedRef.current) setShowBlackout(true);
+      if (firebaseBootstrappedRef.current && showBumpersRef.current) setShowBlackout(true);
     }
     prevPhase.current = phase;
   }, [phase]); // eslint-disable-line
@@ -2275,7 +2289,7 @@ export default function BracketApp() {
                         color: showBumpers === on ? "#c8f55a" : "#2a5a2a",
                         border: showBumpers === on ? "2px solid #c8f55a" : "1px solid #1a2e1a",
                       }}
-                      onClick={() => setShowBumpers(on)}
+                      onClick={() => { setShowBumpers(on); showBumpersRef.current = on; localStorage.setItem("bracket_showBumpers", String(on)); }}
                     >
                       {on ? "ON" : "OFF"}
                     </button>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ref, onValue, update, remove, get } from "firebase/database";
+import { ref, onValue, update, remove, get, set } from "firebase/database";
 import { db } from "./firebase.js";
 import { safeKey } from "./useGameState.js";
 
@@ -51,7 +51,7 @@ function ItemCountBadge({ count }) {
   const color = count >= 32 ? "#4cff80" : count >= 16 ? "#ffcc00" : "#ff4444";
   return (
     <span style={{ fontSize: 12, fontFamily: _mono, color, border: `1px solid ${color}`, borderRadius: 4, padding: "2px 8px", marginLeft: 10 }}>
-      {count} / 32
+      {count} items
     </span>
   );
 }
@@ -67,6 +67,8 @@ function Editor() {
   const [itemsText, setItemsText] = useState("");
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
+  const [botw, setBotw] = useState(null);
+  const [randomCat, setRandomCat] = useState(null);
   const originalKeyRef = useRef(null);
 
   useEffect(() => {
@@ -76,12 +78,26 @@ function Editor() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    const unsub = onValue(ref(db, "bracketOfTheWeek"), (snap) => {
+      setBotw(snap.val() || null);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "randomCategory"), (snap) => {
+      setRandomCat(snap.val() || null);
+    });
+    return () => unsub();
+  }, []);
+
   function toggleTag(tag) {
     setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   }
 
   const parsedItems = itemsText.split("\n").map(s => s.trim()).filter(Boolean);
-  const displayCount = Math.min(parsedItems.length, 32);
+  const displayCount = parsedItems.length;
   const activeKey = name.trim() ? safeKey(name.trim()) : null;
 
   function loadBracket(key, b) {
@@ -112,7 +128,7 @@ function Editor() {
     const existing = brackets[key];
     const now = Date.now();
     const hiddenTags = hiddenTagsStr.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
-    const items = parsedItems.slice(0, 32);
+    const items = parsedItems;
 
     setSaving(true);
     setStatus(null);
@@ -193,12 +209,18 @@ function Editor() {
           )}
           {filteredBrackets.map(([key, b]) => {
             const isActive = key === selectedKey;
+            const isBotw = key === botw;
+            const isRandom = key === randomCat;
             return (
               <div
                 key={key}
                 onClick={() => loadBracket(key, b)}
                 style={{ padding: "11px 16px", cursor: "pointer", borderBottom: "1px solid #0f1f0f", background: isActive ? "#1a3a0a" : "transparent" }}>
-                <div style={{ fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 2 }}>{b.name}</div>
+                <div style={{ fontSize: 14, fontWeight: "bold", letterSpacing: 1, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                  {isBotw && <span title="Bracket of the Week" style={{ color: "#ffd700" }}>★</span>}
+                  {isRandom && <span title="Random Category" style={{ color: "#4cffb0" }}>⟳</span>}
+                  {b.name}
+                </div>
                 {b.tags?.length > 0 && (
                   <div style={{ fontSize: 11, color: "#4a7a2a", letterSpacing: 1 }}>{b.tags.join(", ")}</div>
                 )}
@@ -248,12 +270,11 @@ function Editor() {
         />
 
         <label style={{ fontSize: 12, letterSpacing: 2, color: "#4a7a2a", marginBottom: 4, display: "flex", alignItems: "center" }}>
-          ITEMS (one per line, first 32 used)
+          ITEMS (one per line)
           {parsedItems.length > 0 && <ItemCountBadge count={displayCount} />}
         </label>
         <div style={{ fontSize: 11, color: "#3a5a1a", marginBottom: 10, lineHeight: 1.7 }}>
-          Paste or type items — one per line. At least 32 recommended for a full bracket.
-          For smaller bracket sizes (8 or 16), the first N items are used.
+          Paste or type items — one per line. At least 32 recommended. If more than the bracket size, items are chosen randomly each game.
         </div>
         <textarea
           value={itemsText}
@@ -262,7 +283,7 @@ function Editor() {
           style={{ width: "100%", height: 320, padding: "10px 12px", fontSize: 14, fontFamily: _mono, background: "#0f1f0f", color: "#c8f55a", border: "1px solid #2a4a1a", borderRadius: 6, outline: "none", marginBottom: 10, resize: "vertical", boxSizing: "border-box", lineHeight: 1.6 }}
         />
 
-        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+        <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
           <button
             onClick={save}
             disabled={saving}
@@ -276,6 +297,39 @@ function Editor() {
               DELETE
             </button>
           )}
+          {canDelete && (() => {
+            const key = selectedKey || activeKey;
+            const isBotw = key === botw;
+            const isRandKey = key === randomCat;
+            return (<>
+              {isBotw ? (
+                <button
+                  onClick={() => set(ref(db, "bracketOfTheWeek"), null)}
+                  style={{ padding: "12px 24px", fontSize: 14, fontWeight: "bold", letterSpacing: 2, fontFamily: _mono, background: "#1a1500", color: "#ffd700", border: "2px solid #ffd700", borderRadius: 6, cursor: "pointer" }}>
+                  ★ CLEAR WEEK
+                </button>
+              ) : (
+                <button
+                  onClick={() => set(ref(db, "bracketOfTheWeek"), key)}
+                  style={{ padding: "12px 24px", fontSize: 14, fontWeight: "bold", letterSpacing: 2, fontFamily: _mono, background: "#0f1f0f", color: "#ffd700", border: "2px solid #ffd700", borderRadius: 6, cursor: "pointer" }}>
+                  ★ SET AS WEEK
+                </button>
+              )}
+              {isRandKey ? (
+                <button
+                  onClick={() => set(ref(db, "randomCategory"), null)}
+                  style={{ padding: "12px 24px", fontSize: 14, fontWeight: "bold", letterSpacing: 2, fontFamily: _mono, background: "#001a12", color: "#4cffb0", border: "2px solid #4cffb0", borderRadius: 6, cursor: "pointer" }}>
+                  ⟳ CLEAR RANDOM
+                </button>
+              ) : (
+                <button
+                  onClick={() => set(ref(db, "randomCategory"), key)}
+                  style={{ padding: "12px 24px", fontSize: 14, fontWeight: "bold", letterSpacing: 2, fontFamily: _mono, background: "#0f1f0f", color: "#4cffb0", border: "2px solid #4cffb0", borderRadius: 6, cursor: "pointer" }}>
+                  ⟳ SET AS RANDOM
+                </button>
+              )}
+            </>);
+          })()}
         </div>
         {status && (
           <div style={{ marginTop: 12, fontSize: 13, color: status.ok ? "#4cff80" : "#ff4444", letterSpacing: 1 }}>
