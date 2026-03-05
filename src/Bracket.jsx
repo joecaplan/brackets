@@ -2009,7 +2009,7 @@ export default function BracketApp() {
           style={{
             ...s.titleVideo,
             ...(isPortrait
-              ? { top: 0, height: "30vh", transform: "translateX(-50%)" }
+              ? { top: "18%", height: "30vh", transform: "translate(-50%, -50%)" }
               : { top: "calc(29% - 40px)", height: "90vh", transform: `translate(-50%, -50%) scale(${Math.min(1, windowWidth / 1700)})` }
             ),
           }}
@@ -2037,10 +2037,21 @@ export default function BracketApp() {
         <div style={s.lobbyContentWrap}>
           {(() => {
             const heightScale = isPortrait ? 1 : Math.min(1, windowHeight / 700);
-            const qrSize     = Math.round(Math.max(60,  Math.min(180, windowWidth * 0.18) * heightScale));
-            const codeSize   = Math.round(Math.max(16,  Math.min(56,  windowWidth * 0.055) * heightScale));
-            const urlSize    = Math.round(Math.max(8,   Math.min(18,  windowWidth * 0.016) * heightScale));
-            const labelSize  = Math.round(Math.max(7,   Math.min(13,  windowWidth * 0.012) * heightScale));
+            const qrSize     = isPortrait
+              ? Math.round(Math.min(180, windowWidth * 0.40))
+              : Math.round(Math.max(60, Math.min(180, windowWidth * 0.18) * heightScale));
+            const codeSize   = isPortrait
+              ? Math.round(Math.min(52, windowWidth * 0.11))
+              : Math.round(Math.max(16, Math.min(56, windowWidth * 0.055) * heightScale));
+            const urlSize    = isPortrait
+              ? Math.round(Math.min(14, windowWidth * 0.034))
+              : Math.round(Math.max(8, Math.min(18, windowWidth * 0.016) * heightScale));
+            const labelSize  = isPortrait
+              ? Math.round(Math.min(11, windowWidth * 0.027))
+              : Math.round(Math.max(7, Math.min(13, windowWidth * 0.012) * heightScale));
+            const playerFontSize = isPortrait
+              ? Math.round(Math.min(24, windowWidth * 0.058))
+              : 18;
             const infoGap    = Math.round(Math.max(4,   10 * heightScale));
             const rowGap     = Math.round(Math.max(8,   20 * heightScale));
             return (
@@ -2048,11 +2059,11 @@ export default function BracketApp() {
                 ...s.lobbyInfo,
                 gap: infoGap,
                 ...(isPortrait
-                  ? { top: "50%", transform: "translate(-50%, -50%)" }
+                  ? { top: "62%", transform: "translate(-50%, -50%)" }
                   : { top: "auto", bottom: "max(12px, 2vh)", transform: "translateX(-50%)" }
                 ),
               }}>
-                <div style={s.lobbyPlayers}>
+                <div style={{ ...s.lobbyPlayers, fontSize: playerFontSize, whiteSpace: "nowrap" }}>
                   {playerCount} PLAYER{playerCount !== 1 ? "S" : ""} JOINED
                 </div>
                 {Object.keys(playerNames).length > 0 && (
