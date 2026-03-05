@@ -450,6 +450,7 @@ export default function PhoneVote() {
   const lastBumperRoundRef = useRef(null);
   const firebaseBootstrappedRef = useRef(false);
   const rpsChosenRoundRef = useRef(null); // which RPS round the player submitted in
+  const categoryScrollRef = useRef(null);
   const rpsLingerDataRef    = useRef(null);   // saved tiebreaker when result was revealed
   const rpsLingerActiveRef  = useRef(false);  // true while in "rps" phase with revealed result
   const rpsLingerEndRef     = useRef(null);   // linger expiry timestamp (ms)
@@ -458,6 +459,13 @@ export default function PhoneVote() {
   useEffect(() => {
     localStorage.setItem("bracket_pid", playerId.current);
   }, []);
+
+  // Scroll category screen to top when it becomes visible
+  useEffect(() => {
+    if (isHost && !category && categoryScrollRef.current) {
+      categoryScrollRef.current.scrollTop = 0;
+    }
+  }, [isHost, category]);
 
   useEffect(() => {
     const CLICKABLE_HOVER = "button:hover, button:hover *, a:hover, a:hover *, [role='button']:hover, [role='button']:hover *, select:hover, select:hover *, input[type='range']:hover, input[type='checkbox']:hover, input[type='radio']:hover, label:hover, label:hover *";
@@ -906,7 +914,7 @@ export default function PhoneVote() {
 
     if (isHost && !category) {
       return (
-        <div style={{ ...vs.root, height: "100dvh", minHeight: "unset", justifyContent: "flex-start", overflowY: "auto" }}>
+        <div ref={categoryScrollRef} style={{ ...vs.root, height: "100dvh", minHeight: "unset", justifyContent: "flex-start", overflowY: "auto" }}>
           {muteButton}
           <div style={vs.lobbyTitle}>BRACKETS</div>
           <div style={vs.sizeRow}>
@@ -980,21 +988,18 @@ export default function PhoneVote() {
                   <button
                     key={key + "-" + (searchQuery || selectedTag)}
                     style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${i * 35}ms both` }}
-                    onClick={() => { setRandomMode(false); selectCategory(key); }}
-                    onTouchEnd={(e) => { e.preventDefault(); setRandomMode(false); selectCategory(key); }}>
+                    onClick={() => { setRandomMode(false); selectCategory(key); }}>
                     {c.name.toUpperCase()}
                   </button>
                 ))}
                 <button
                   style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${filtered.length * 35}ms both`, opacity: 0.6 }}
-                  onClick={() => selectCategory("?????")}
-                  onTouchEnd={(e) => { e.preventDefault(); selectCategory("?????"); }}>
+                  onClick={() => selectCategory("?????")}>
                   ?????
                 </button>
                 <button
                   style={{ ...vs.categoryBtn, animation: `categoryBtnIn 0.22s cubic-bezier(0.22,1,0.36,1) ${(filtered.length + 1) * 35}ms both`, opacity: 0.6 }}
-                  onClick={() => setShowCustomInput(true)}
-                  onTouchEnd={(e) => { e.preventDefault(); setShowCustomInput(true); }}>
+                  onClick={() => setShowCustomInput(true)}>
                   CUSTOM BRACKET
                 </button>
               </>
@@ -1667,7 +1672,7 @@ const vs = {
   },
   nameError: { fontSize: 16, color: "#ff4444", letterSpacing: 3, fontWeight: "bold", textAlign: "center", padding: "8px 0" },
   muteBtn: {
-    position: "absolute", top: "max(16px, env(safe-area-inset-top))", right: 16, zIndex: 10,
+    position: "fixed", top: "max(16px, env(safe-area-inset-top))", right: 16, zIndex: 10,
     background: "transparent", border: "1px solid #1a2e1a", borderRadius: 6,
     padding: "6px 10px", fontSize: 20, cursor: "pointer", color: "#c8f55a", lineHeight: 1, ..._tap,
   },

@@ -1111,6 +1111,13 @@ function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboa
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [handleMouseMove]);
 
+  useEffect(() => {
+    if (!rive) return;
+    const onResize = () => rive.resizeDrawingSurface();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [rive]);
+
   const handleClick = useCallback((e) => {
     if (triggerRef.current) {
       try { triggerRef.current.fire(); } catch { try { triggerRef.current.value = true; } catch {} }
@@ -1150,6 +1157,84 @@ function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboa
   );
 }
 
+// ─── Tutorial Overlay ─────────────────────────────────────────────────────────
+function TutorialOverlay({ onClose }) {
+  const mono = { fontFamily: "'PT Mono', monospace" };
+  const section = { display: "flex", flexDirection: "column", gap: 8 };
+  const label = { ...mono, fontSize: 9, letterSpacing: 3, color: "#6a8a6a" };
+  const title = { ...mono, fontSize: 11, letterSpacing: 2, color: "#c8f55a", fontWeight: "bold" };
+  const body  = { ...mono, fontSize: 10, letterSpacing: 1, color: "#8aaa8a", lineHeight: 1.7 };
+  const divider = { borderTop: "1px solid #1a2e1a", margin: "4px 0" };
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)" }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "rgba(6,14,6,0.97)", border: "1px solid #1a2e1a", borderRadius: 3,
+          padding: "36px 44px", width: 520, maxHeight: "85vh", overflowY: "auto",
+          display: "flex", flexDirection: "column", gap: 22,
+          animation: "settings-open 0.18s ease-out both",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ ...mono, fontSize: 12, letterSpacing: 4, color: "#c8f55a" }}>HOW TO PLAY</span>
+          <button style={{ background: "none", border: "none", color: "#c8f55a", cursor: "pointer", fontSize: 16, ...mono }} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Minigames */}
+        <div style={section}>
+          <span style={label}>PRE-MATCH MINIGAMES</span>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>ROCK PAPER SCISSORS</span>
+            <span style={body}>Before a match, each of the two competing players picks Rock, Paper, or Scissors on their phone. The winner earns double votes for that round — their vote counts twice!</span>
+          </div>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>ONE SECOND CHALLENGE</span>
+            <span style={body}>Each of the two competing players taps to start a timer, then taps again to try to stop it as close to exactly 1.000 second as possible. Whoever is closest wins double votes for that round!</span>
+          </div>
+        </div>
+
+        {/* Settings */}
+        <div style={section}>
+          <span style={label}>SETTINGS</span>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>MUSIC / SFX</span>
+            <span style={body}>Control the volume of background music and sound effects independently.</span>
+          </div>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>TIEBREAKER</span>
+            <span style={body}><span style={{ color: "#c8f55a" }}>HOST DECIDES</span> — when a vote ends in a tie, the host manually picks the winner.{"\n"}<span style={{ color: "#c8f55a" }}>RANDOM</span> — a winner is chosen automatically at random.</span>
+          </div>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>AUTO-ADVANCE</span>
+            <span style={body}>After results appear, automatically move to the next match after 2, 3, or 5 seconds. Set to OFF to advance manually.</span>
+          </div>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>ROUND VIDEOS</span>
+            <span style={body}>Play a short cinematic video bumper between each round (e.g. "Round 1", "Quarterfinals"). Turn OFF to skip them for a faster game.</span>
+          </div>
+          <div style={divider} />
+          <div style={section}>
+            <span style={title}>PRE-MATCH MINIGAMES</span>
+            <span style={body}>Randomly triggers a minigame before certain matches. Use INCLUDE to choose which minigames can appear (RPS and/or One Second), and FREQUENCY to control how often they trigger (LOW, MED, HIGH).</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function generateRoomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars (0/O, 1/I)
   return Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
@@ -1176,6 +1261,15 @@ export default function BracketApp() {
     startNext, skip, playAgain, hostPickWinner, startRPS, startOneSecond, clearPlayers, setRpsRevealed, setMinigameSettings
   } = useGameState(null, roomCode);
 
+  const [windowWidth,  setWindowWidth]  = useState(window.innerWidth);
+  const [windowHeight, setWindowHeight] = useState(window.innerHeight);
+  useEffect(() => {
+    const onResize = () => { setWindowWidth(window.innerWidth); setWindowHeight(window.innerHeight); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const isPortrait = windowHeight > windowWidth;
+
   const [cameraTarget, setCameraTarget] = useState(null);
   const [zoomed,       setZoomed]       = useState(false);
   const [muted,        setMuted]        = useState(false);
@@ -1189,6 +1283,7 @@ export default function BracketApp() {
   const [bumperFading, setBumperFading] = useState(false);
   const [showBlackout, setShowBlackout] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [musicVolume,  setMusicVolume]  = useState(1);
   const [sfxVolume,    setSfxVolume]    = useState(1);
@@ -1904,17 +1999,27 @@ export default function BracketApp() {
           }
           .reset-btn-outer:hover .reset-arrow { animation: reset-spin 2.67s linear infinite; }
         `}</style>
-        {/* Title video background */}
+        {/* Title video background — stays above info section; scales below 1700px in landscape */}
         <video
           src={titleVideoSrc}
           autoPlay
           loop
           muted
           playsInline
-          style={s.titleVideo}
+          style={{
+            ...s.titleVideo,
+            ...(isPortrait
+              ? { top: 0, height: "30vh", transform: "translateX(-50%)" }
+              : { top: "calc(29% - 40px)", height: "90vh", transform: `translate(-50%, -50%) scale(${Math.min(1, windowWidth / 1700)})` }
+            ),
+          }}
         />
-        {/* BracketBot — full-screen z100; lobby UI at z150 sits above it */}
-        <BracketBot volume={sfxVolume} />
+        {/* BracketBot — hidden on portrait, small, or short screens */}
+        {!isPortrait && windowWidth >= 1000 && windowHeight >= 850 && (
+          <div style={{ position: "absolute", top: "-1%", left: 0, right: 0, bottom: "11%", zIndex: 100 }}>
+            <BracketBot volume={sfxVolume} />
+          </div>
+        )}
         <div style={{ position: "absolute", top: 16, right: 16, zIndex: 150, display: "flex", gap: 8, pointerEvents: "none" }}>
           <button className="reset-btn-outer" onClick={handleClearPlayers} style={{ ...s.clearBtnSmall, pointerEvents: "auto" }}>
             <span className="reset-arrow" style={{ display: "inline-flex", width: 16, height: 16 }}><IconReset /></span>
@@ -1930,46 +2035,67 @@ export default function BracketApp() {
           )}
         </div>
         <div style={s.lobbyContentWrap}>
-          <div style={s.lobbyInfo}>
-            <div style={s.lobbyPlayers}>
-              {playerCount} PLAYER{playerCount !== 1 ? "S" : ""} JOINED
-            </div>
-            {Object.keys(playerNames).length > 0 && (
-              <div style={s.lobbyNamesList}>
-                {Object.entries(playerNames).map(([pid, name], i) => {
-                  const color = PLAYER_COLORS[(playerColors?.[pid] ?? i) % PLAYER_COLORS.length];
-                  return (
-                    <span key={pid} className="anim-nameTagIn" style={{
-                      ...s.lobbyNameTag,
-                      animationDelay: `${i * 60}ms`,
-                      color,
-                      borderColor: color,
-                      boxShadow: `0 0 8px ${color}44`,
-                    }}>{name}</span>
-                  );
-                })}
+          {(() => {
+            const heightScale = isPortrait ? 1 : Math.min(1, windowHeight / 700);
+            const qrSize     = Math.round(Math.max(60,  Math.min(180, windowWidth * 0.18) * heightScale));
+            const codeSize   = Math.round(Math.max(16,  Math.min(56,  windowWidth * 0.055) * heightScale));
+            const urlSize    = Math.round(Math.max(8,   Math.min(18,  windowWidth * 0.016) * heightScale));
+            const labelSize  = Math.round(Math.max(7,   Math.min(13,  windowWidth * 0.012) * heightScale));
+            const infoGap    = Math.round(Math.max(4,   10 * heightScale));
+            const rowGap     = Math.round(Math.max(8,   20 * heightScale));
+            return (
+              <div style={{
+                ...s.lobbyInfo,
+                gap: infoGap,
+                ...(isPortrait
+                  ? { top: "50%", transform: "translate(-50%, -50%)" }
+                  : { top: "auto", bottom: "max(12px, 2vh)", transform: "translateX(-50%)" }
+                ),
+              }}>
+                <div style={s.lobbyPlayers}>
+                  {playerCount} PLAYER{playerCount !== 1 ? "S" : ""} JOINED
+                </div>
+                {Object.keys(playerNames).length > 0 && (
+                  <div style={s.lobbyNamesList}>
+                    {Object.entries(playerNames).map(([pid, name], i) => {
+                      const color = PLAYER_COLORS[(playerColors?.[pid] ?? i) % PLAYER_COLORS.length];
+                      return (
+                        <span key={pid} className="anim-nameTagIn" style={{
+                          ...s.lobbyNameTag,
+                          animationDelay: `${i * 60}ms`,
+                          color,
+                          borderColor: color,
+                          boxShadow: `0 0 8px ${color}44`,
+                        }}>{name}</span>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{ height: 1, background: "#1a2e1a", width: "100%", margin: "8px 0" }} />
+                <div style={{ fontFamily: "'PT Mono',monospace", fontSize: labelSize, letterSpacing: 4, color: "#6a8a6a", textAlign: "center" }}>
+                  ENTER CODE AT URL OR SCAN QR TO JOIN
+                </div>
+                <div style={{ display: "flex", flexDirection: isPortrait ? "column" : "row", alignItems: "center", gap: rowGap, marginTop: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontFamily: "'PT Mono',monospace", fontSize: labelSize, letterSpacing: 4, color: "#6a8a6a" }}>ROOM CODE</div>
+                    <div style={{ fontFamily: "'PT Mono',monospace", fontSize: codeSize, fontWeight: 700, letterSpacing: Math.round(codeSize * 0.21), color: "#c8f55a", lineHeight: 1 }}>{roomCode}</div>
+                    <div style={{ ...s.lobbyUrl, fontSize: urlSize }}>
+                      <span style={{ color: "#7a9a7a" }}>{window.location.host}/vote</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: 6, background: "#0a140a", border: "1px solid #1a2e1a", flexShrink: 0 }}>
+                    <QRCodeSVG
+                      value={`${window.location.origin}/vote?room=${roomCode}`}
+                      size={qrSize}
+                      bgColor="#0a140a"
+                      fgColor="#c8f55a"
+                      level="M"
+                    />
+                  </div>
+                </div>
               </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 4 }}>
-              <div style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 4, color: "#6a8a6a" }}>ROOM CODE</div>
-              <div style={{ fontFamily: "'PT Mono',monospace", fontSize: 36, fontWeight: 700, letterSpacing: 10, color: "#c8f55a", lineHeight: 1 }}>{roomCode}</div>
-              <div style={s.lobbyUrl}>
-                <span style={{ color: "#7a9a7a" }}>{window.location.host}/vote</span>
-              </div>
-            </div>
-            <div style={{ padding: 6, background: "#0a140a", border: "1px solid #1a2e1a", marginTop: 4 }}>
-              <QRCodeSVG
-                value={`${window.location.origin}/vote?room=${roomCode}`}
-                size={60}
-                bgColor="#0a140a"
-                fgColor="#c8f55a"
-                level="M"
-              />
-            </div>
-            <div style={s.lobbyStatus}>
-              Waiting for host to select category
-            </div>
-          </div>
+            );
+          })()}
         </div>
 
         {/* Hall of Fame popup */}
@@ -2051,10 +2177,16 @@ export default function BracketApp() {
                   <span className="settings-header-gear" style={{ display: "inline-flex", width: 16, height: 16 }}><IconGear /></span>
                   SETTINGS
                 </span>
-                <button
-                  style={{ background: "none", border: "none", color: "#c8f55a", cursor: "pointer", fontSize: 16, fontFamily: "'PT Mono',monospace" }}
-                  onClick={() => setShowSettings(false)}
-                >✕</button>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <button
+                    style={{ background: "none", border: "1px solid #2a5a2a", color: "#6a8a6a", cursor: "pointer", fontSize: 10, fontFamily: "'PT Mono',monospace", letterSpacing: 2, padding: "4px 10px", borderRadius: 3 }}
+                    onClick={() => setShowTutorial(true)}
+                  >? HOW TO PLAY</button>
+                  <button
+                    style={{ background: "none", border: "none", color: "#c8f55a", cursor: "pointer", fontSize: 16, fontFamily: "'PT Mono',monospace" }}
+                    onClick={() => setShowSettings(false)}
+                  >✕</button>
+                </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -2192,6 +2324,9 @@ export default function BracketApp() {
             </div>
           </div>
         )}
+
+        {/* Tutorial overlay */}
+        {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
       </div>
     );
   }
@@ -2652,10 +2787,16 @@ export default function BracketApp() {
                 <span className="settings-header-gear" style={{ display: "inline-flex", width: 16, height: 16 }}><IconGear /></span>
                 SETTINGS
               </span>
-              <button
-                style={{ background: "none", border: "none", color: "#c8f55a", cursor: "pointer", fontSize: 16, fontFamily: "'PT Mono',monospace" }}
-                onClick={() => setShowSettings(false)}
-              >✕</button>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <button
+                  style={{ background: "none", border: "1px solid #2a5a2a", color: "#6a8a6a", cursor: "pointer", fontSize: 10, fontFamily: "'PT Mono',monospace", letterSpacing: 2, padding: "4px 10px", borderRadius: 3 }}
+                  onClick={() => setShowTutorial(true)}
+                >? HOW TO PLAY</button>
+                <button
+                  style={{ background: "none", border: "none", color: "#c8f55a", cursor: "pointer", fontSize: 16, fontFamily: "'PT Mono',monospace" }}
+                  onClick={() => setShowSettings(false)}
+                >✕</button>
+              </div>
             </div>
 
             {/* Music Volume */}
@@ -2796,6 +2937,8 @@ export default function BracketApp() {
         </div>
       )}
 
+      {/* Tutorial overlay */}
+      {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
 
       {/* Unanimous flash overlay */}
       {showUnanimous && (
@@ -2909,11 +3052,8 @@ const s = {
   },
   titleVideo: {
     position: "absolute",
-    top: "calc(35% - 40px)",
     left: "50%",
-    transform: "translate(-50%, -50%)",
     width: "auto",
-    height: "93.6vh",
     objectFit: "contain",
     zIndex: 0,
     pointerEvents: "none",
