@@ -77,6 +77,9 @@ function initialGameState() {
     matchNote: null,
     tiebreakerCounts: {},
     doubleVoter: null,
+    minigamesEnabled: false,
+    minigameMatchIds: [],
+    simpleUX: false,
   };
 }
 
@@ -104,18 +107,13 @@ function weightedPick(pool, counts) {
   return pool[pool.length - 1];
 }
 
-// Returns the challenge type ("rps" | "oneSecond") to run before the next match,
-// or null if no challenge should fire. Reads from the host's minigame settings.
-function shouldTriggerChallenge(totalP, settings) {
-  const { enabled, allowRps, allowOneSecond, frequency } = settings;
-  if (!enabled || (!allowRps && !allowOneSecond)) return null;
-  if (totalP < 2) return null;
-  const freqMap = { low: 0.20, medium: 0.30, high: 0.50 };
-  const prob = freqMap[frequency] ?? 0.20;
-  const roll = Math.random();
-  if (roll >= prob) return null;
-  if (allowRps && allowOneSecond) return roll < prob / 2 ? "rps" : "oneSecond";
-  return allowRps ? "rps" : "oneSecond";
+// Pick N random non-final match IDs for minigames.
+// 32-bracket → 5, 16-bracket → 4, 8-bracket → 3.
+function pickMinigameMatchIds(bracket, bracketSize) {
+  const finalId = bracket.final?.id;
+  const nonFinal = allMatches(bracket).filter(m => m.id !== finalId);
+  const count = bracketSize >= 32 ? 5 : bracketSize >= 16 ? 4 : 3;
+  return shuffle(nonFinal).slice(0, Math.min(count, nonFinal.length)).map(m => m.id);
 }
 
 // Determine winner of RPS. Returns "p1", "p2", or "draw".
@@ -151,8 +149,11 @@ export function useGameState(playerId = null, roomCode = null) {
   const customCategoriesRef = useRef({});
   const [bracketOfTheWeek, setBracketOfTheWeek] = useState(null);
   const [randomCategory, setRandomCategory] = useState(null);
-  const minigameSettingsRef = useRef({ enabled: true, allowRps: true, allowOneSecond: true, frequency: "medium" });
-  const setMinigameSettings = useCallback((s) => { minigameSettingsRef.current = s; }, []);
+  const [minigamesEnabled, setMinigamesEnabledState] = useState(false);
+  const [sequentialVoting, setSequentialVotingState] = useState(false);
+  const [simpleUX, setSimpleUXState] = useState(false);
+  const [votingQueue, setVotingQueue]       = useState([]);
+  const [votingQueueIndex, setVotingQueueIndex] = useState(0);
   const [liveReactions, setLiveReactions]   = useState([]);
   const resolveTimer = useRef(null);
 
@@ -191,6 +192,11 @@ export function useGameState(playerId = null, roomCode = null) {
       setPlayerColors(data.playerColors || {});
       setMatchNoteState(data.matchNote || null);
       setDoubleVoter(data.doubleVoter || null);
+      setMinigamesEnabledState(data.minigamesEnabled === true);
+      setSequentialVotingState(data.sequentialVoting === true);
+      setSimpleUXState(data.simpleUX === true);
+      setVotingQueue(data.votingQueue || []);
+      setVotingQueueIndex(data.votingQueueIndex || 0);
     }, (err) => {
       console.error("Firebase onValue error:", err);
     });
@@ -312,6 +318,10 @@ export function useGameState(playerId = null, roomCode = null) {
     const numPlayers = Math.max(Object.keys(players).length, 1);
     const b = initBracket(shuffle(items));
     const first = nextUnplayed(b);
+    const minigamesOn = data.minigamesEnabled === true;
+    const minigameMatchIds = minigamesOn ? pickMinigameMatchIds(b, size) : [];
+    const seqOn = data.sequentialVoting === true;
+    const initQueue = seqOn ? shuffle(Object.keys(data.players || {})) : [];
     await firebaseSet(gameRef, {
       phase: "playing",
       category: data.category,
@@ -327,6 +337,11 @@ export function useGameState(playerId = null, roomCode = null) {
       scores: {},
       tiebreakerCounts: {},
       doubleVoter: null,
+      minigamesEnabled: minigamesOn,
+      minigameMatchIds,
+      sequentialVoting: seqOn,
+      votingQueue: initQueue,
+      votingQueueIndex: 0,
     });
   }, [gameRef]);
 
@@ -383,7 +398,11 @@ export function useGameState(playerId = null, roomCode = null) {
       const nxt = nextUnplayed(resolved);
       const totalP = scoreData?.totalPlayers || 0;
       const tc = scoreData?.tiebreakerCounts || {};
-      const challengeType = nxt ? shouldTriggerChallenge(totalP, minigameSettingsRef.current) : null;
+      const minigameMatchIds = scoreData?.minigameMatchIds || [];
+      const _r0 = Math.random();
+      const challengeType = (nxt && minigameMatchIds.includes(nxt.id))
+        ? (_r0 < 0.333 ? "rps" : _r0 < 0.667 ? "oneSecond" : "shapeHalve")
+        : null;
 
       if (challengeType) {
         const type = challengeType;
@@ -393,14 +412,20 @@ export function useGameState(playerId = null, roomCode = null) {
         const p2 = remainingPids.length > 0 ? weightedPick(remainingPids, tc) : p1;
         const matchObj = allMatches(resolved).find(m => m.id === nxt.id);
         const [c0, c1] = matchObj?.contenders || ["???", "???"];
+        let tbObj;
+        if (type === "rps") {
+          tbObj = { matchId: nxt.id, c0, c1, preMatch: true, rps: { player1: p1, player2: p2, choice1: null, choice2: null, round: 1, result: null } };
+        } else if (type === "oneSecond") {
+          tbObj = { matchId: nxt.id, c0, c1, preMatch: true, oneSecond: { player1: p1, player2: p2, osPhase: "waiting_p1", startTs1: null, elapsed1: null, startTs2: null, elapsed2: null, winner: null } };
+        } else {
+          tbObj = { matchId: nxt.id, c0, c1, preMatch: true, shapeHalve: { player1: p1, player2: p2, shPhase: "cutting", seed: Math.floor(Math.random() * 1000000), line1: null, line2: null, ratio1: null, ratio2: null, winner: null } };
+        }
         const challengeUpdates = {
           bracket: resolved,
-          phase: type === "rps" ? "rps" : "oneSecond",
+          phase: type === "rps" ? "rps" : type === "oneSecond" ? "oneSecond" : "shapeHalve",
           currentMatchId: null,
           voters: {},
-          tiebreaker: type === "rps"
-            ? { matchId: nxt.id, c0, c1, preMatch: true, rps: { player1: p1, player2: p2, choice1: null, choice2: null, round: 1, result: null } }
-            : { matchId: nxt.id, c0, c1, preMatch: true, oneSecond: { player1: p1, player2: p2, osPhase: "waiting_p1", startTs1: null, elapsed1: null, startTs2: null, elapsed2: null, winner: null } },
+          tiebreaker: tbObj,
           doubleVoter: null,
           scores: updatedScores,
           matchNote: "__null__",
@@ -411,6 +436,7 @@ export function useGameState(playerId = null, roomCode = null) {
         if (p2 !== p1) countUpdates["tiebreakerCounts/" + p2] = (tc[p2] || 0) + 1;
         await firebaseUpdate(gameRef, countUpdates);
       } else {
+        const seqQueue = scoreData?.sequentialVoting ? shuffle(Object.keys(scoreData?.players || {})) : [];
         await firebaseUpdate(gameRef, {
           bracket: resolved,
           currentMatchId: nxt ? nxt.id : null,
@@ -420,6 +446,8 @@ export function useGameState(playerId = null, roomCode = null) {
           doubleVoter: null,
           scores: updatedScores,
           matchNote: "__null__",
+          votingQueue: seqQueue,
+          votingQueueIndex: 0,
         });
       }
     }
@@ -427,19 +455,30 @@ export function useGameState(playerId = null, roomCode = null) {
 
   // ── Vote ──
   const vote = useCallback(async (pid, choice) => {
-    const voterRef = ref(db, basePath + "/voters/" + pid);
-    await set(voterRef, choice);
-
     const snap = await get(gameRef);
     const data = firebaseDeserialize(snap.val());
     if (!data || !data.currentMatchId) return;
+    if (data.phase !== "playing") return; // ignore votes during tiebreaker / minigame phases
+
+    // Sequential voting: only the current player in the queue can vote
+    if (data.sequentialVoting) {
+      const queue = data.votingQueue || [];
+      const idx = data.votingQueueIndex || 0;
+      if (!queue.length || queue[idx] !== pid) return;
+    }
+
+    const voterRef = ref(db, basePath + "/voters/" + pid);
+    await set(voterRef, choice);
 
     // Apply vote — doubleVoter's choice counts twice
     let updated = applyVote(data.bracket, data.currentMatchId, choice);
     if (data.doubleVoter === pid) {
       updated = applyVote(updated, data.currentMatchId, choice);
     }
-    await firebaseUpdate(gameRef, { bracket: updated });
+    const queueUpdates = data.sequentialVoting
+      ? { votingQueueIndex: (data.votingQueueIndex || 0) + 1 }
+      : {};
+    await firebaseUpdate(gameRef, { bracket: updated, ...queueUpdates });
 
     const voters = data.voters || {};
     voters[pid] = choice;
@@ -464,11 +503,14 @@ export function useGameState(playerId = null, roomCode = null) {
         }
       }
       // Not a tie — auto resolve
+      const matchIdAtSet = data.currentMatchId;
       if (resolveTimer.current) clearTimeout(resolveTimer.current);
       resolveTimer.current = setTimeout(async () => {
         const freshSnap = await get(gameRef);
         const fresh = firebaseDeserialize(freshSnap.val());
         if (!fresh || !fresh.currentMatchId) return;
+        if (fresh.phase !== "playing") return; // tiebreaker was set concurrently; don't clobber it
+        if (fresh.currentMatchId !== matchIdAtSet) return; // another client already advanced this match
         const fm = allMatches(fresh.bracket).find(x => x.id === fresh.currentMatchId);
         if (!fm) return;
         const [fc0, fc1] = fm.contenders;
@@ -492,7 +534,11 @@ export function useGameState(playerId = null, roomCode = null) {
     const totalP = data.totalPlayers || 0;
     const tc = data.tiebreakerCounts || {};
 
-    const challengeType = shouldTriggerChallenge(totalP, minigameSettingsRef.current);
+    const minigameMatchIds = data.minigameMatchIds || [];
+    const _r1 = Math.random();
+    const challengeType = minigameMatchIds.includes(nxt.id)
+      ? (_r1 < 0.333 ? "rps" : _r1 < 0.667 ? "oneSecond" : "shapeHalve")
+      : null;
     if (challengeType) {
       const type = challengeType;
       const allPids = Object.keys(data.players || {});
@@ -503,7 +549,7 @@ export function useGameState(playerId = null, roomCode = null) {
       const [c0, c1] = matchObj?.contenders || ["???", "???"];
 
       const challengeUpdates = {
-        phase: type === "rps" ? "rps" : "oneSecond",
+        phase: type === "rps" ? "rps" : type === "oneSecond" ? "oneSecond" : "shapeHalve",
         currentMatchId: null,
         voters: {},
         matchNote: "__null__",
@@ -513,11 +559,17 @@ export function useGameState(playerId = null, roomCode = null) {
           matchId: nxt.id, c0, c1, preMatch: true,
           rps: { player1: p1, player2: p2, choice1: null, choice2: null, round: 1, result: null },
         };
-      } else {
+      } else if (type === "oneSecond") {
         challengeUpdates.tiebreaker = {
           matchId: nxt.id, c0, c1, preMatch: true,
           oneSecond: { player1: p1, player2: p2, osPhase: "waiting_p1",
             startTs1: null, elapsed1: null, startTs2: null, elapsed2: null, winner: null },
+        };
+      } else {
+        challengeUpdates.tiebreaker = {
+          matchId: nxt.id, c0, c1, preMatch: true,
+          shapeHalve: { player1: p1, player2: p2, shPhase: "cutting",
+            seed: Math.floor(Math.random() * 1000000), line1: null, line2: null, ratio1: null, ratio2: null, winner: null },
         };
       }
       await firebaseUpdate(gameRef, challengeUpdates);
@@ -528,7 +580,8 @@ export function useGameState(playerId = null, roomCode = null) {
       return;
     }
 
-    await firebaseUpdate(gameRef, { currentMatchId: nxt.id, voters: {}, phase: "playing", tiebreaker: null, matchNote: "__null__" });
+    const seqQueue = data.sequentialVoting ? shuffle(Object.keys(data.players || {})) : [];
+    await firebaseUpdate(gameRef, { currentMatchId: nxt.id, voters: {}, phase: "playing", tiebreaker: null, matchNote: "__null__", votingQueue: seqQueue, votingQueueIndex: 0 });
   }, [gameRef]);
 
   // ── Skip / force result (picks first contender on tie) ──
@@ -556,12 +609,17 @@ export function useGameState(playerId = null, roomCode = null) {
 
   // ── Resolve pre-match challenge: mark winner as doubleVoter, start the match ──
   const resolvePreChallenge = useCallback(async (winnerPid, matchId) => {
+    const snap = await get(gameRef);
+    const data = firebaseDeserialize(snap.val());
+    const seqQueue = data?.sequentialVoting ? shuffle(Object.keys(data?.players || {})) : [];
     await firebaseUpdate(gameRef, {
       phase: "playing",
       currentMatchId: matchId,
       doubleVoter: winnerPid,
       tiebreaker: null,
       voters: {},
+      votingQueue: seqQueue,
+      votingQueueIndex: 0,
     });
   }, [gameRef]);
 
@@ -777,6 +835,99 @@ export function useGameState(playerId = null, roomCode = null) {
     }
   }, [gameRef, advanceAfterWin, resolvePreChallenge]);
 
+  // ── Start Shape Halve tiebreaker ──
+  const startShapeHalve = useCallback(async () => {
+    const snap = await get(gameRef);
+    const data = firebaseDeserialize(snap.val());
+    if (!data || !data.tiebreaker) return;
+    const tb = data.tiebreaker;
+    const voters = data.voters || {};
+    const tc = data.tiebreakerCounts || {};
+    const side0 = [];
+    const side1 = [];
+    for (const [pid, choice] of Object.entries(voters)) {
+      if (choice === tb.c0) side0.push(pid);
+      else if (choice === tb.c1) side1.push(pid);
+    }
+    const p1 = side0.length > 0 ? weightedPick(side0, tc) : data.hostId;
+    const p2 = side1.length > 0 ? weightedPick(side1, tc) : data.hostId;
+    await firebaseUpdate(gameRef, {
+      phase: "shapeHalve",
+      tiebreaker: {
+        matchId: tb.matchId,
+        c0: tb.c0,
+        c1: tb.c1,
+        shapeHalve: {
+          player1: p1,
+          player2: p2,
+          shPhase: "cutting",
+          seed: Math.floor(Math.random() * 1000000),
+          line1: null,
+          line2: null,
+          ratio1: null,
+          ratio2: null,
+          winner: null,
+        },
+      },
+    });
+    const countUpdates = {};
+    countUpdates["tiebreakerCounts/" + p1] = (tc[p1] || 0) + 1;
+    if (p2 !== p1) countUpdates["tiebreakerCounts/" + p2] = (tc[p2] || 0) + 1;
+    await firebaseUpdate(gameRef, countUpdates);
+  }, [gameRef]);
+
+  // ── Shape Halve: player submits their cut line ──
+  const submitShapeHalve = useCallback(async (pid, lineData, ratio) => {
+    const snap = await get(gameRef);
+    const data = firebaseDeserialize(snap.val());
+    if (!data?.tiebreaker?.shapeHalve) return;
+    const sh = data.tiebreaker.shapeHalve;
+    if (sh.shPhase !== "cutting") return;
+
+    // Write this player's cut (only if not already submitted)
+    if (pid === sh.player1 && sh.ratio1 == null) {
+      await firebaseUpdate(gameRef, {
+        "tiebreaker/shapeHalve/line1": lineData,
+        "tiebreaker/shapeHalve/ratio1": ratio,
+      });
+    } else if (pid === sh.player2 && sh.ratio2 == null) {
+      await firebaseUpdate(gameRef, {
+        "tiebreaker/shapeHalve/line2": lineData,
+        "tiebreaker/shapeHalve/ratio2": ratio,
+      });
+    } else {
+      return;
+    }
+
+    // Re-read to check if both have now submitted
+    const snap2 = await get(gameRef);
+    const data2 = firebaseDeserialize(snap2.val());
+    const sh2 = data2?.tiebreaker?.shapeHalve;
+    if (!sh2 || sh2.ratio1 == null || sh2.ratio2 == null) return;
+
+    // Both done — determine winner and reveal
+    const winner = sh2.ratio1 <= sh2.ratio2 ? "p1" : "p2";
+    const winnerPid = winner === "p1" ? sh2.player1 : sh2.player2;
+    const winnerContender = winner === "p1" ? data2.tiebreaker.c0 : data2.tiebreaker.c1;
+    const isPreMatch = !!data2.tiebreaker.preMatch;
+    const matchId = data2.tiebreaker.matchId;
+    await firebaseUpdate(gameRef, {
+      "tiebreaker/shapeHalve/shPhase": "done",
+      "tiebreaker/shapeHalve/winner": winner,
+    });
+    // Delay long enough for both players' reveal animations to finish (P1: 4.1s + P2: 4.1s + winner: ~2s)
+    setTimeout(async () => {
+      if (isPreMatch) {
+        await resolvePreChallenge(winnerPid, matchId);
+      } else {
+        const s2 = await get(gameRef);
+        const d2 = firebaseDeserialize(s2.val());
+        if (!d2?.currentMatchId) return;
+        await advanceAfterWin(d2.bracket, d2.currentMatchId, winnerContender);
+      }
+    }, 11000);
+  }, [gameRef, advanceAfterWin, resolvePreChallenge]);
+
   // ── Live reactions (ephemeral, not persisted to game state) ──
   useEffect(() => {
     if (!basePath) return;
@@ -819,6 +970,8 @@ export function useGameState(playerId = null, roomCode = null) {
     if (data?.players)      newState.players      = data.players;
     if (data?.playerColors) newState.playerColors = data.playerColors;
     if (data?.hostId)       newState.hostId       = data.hostId;
+    if (data?.minigamesEnabled) newState.minigamesEnabled = data.minigamesEnabled;
+    if (data?.simpleUX)     newState.simpleUX     = data.simpleUX;
     newState.totalPlayers = Object.keys(newState.players).length;
     await firebaseSet(gameRef, newState);
   }, [gameRef]);
@@ -827,6 +980,31 @@ export function useGameState(playerId = null, roomCode = null) {
   const clearPlayers = useCallback(async () => {
     if (resolveTimer.current) clearTimeout(resolveTimer.current);
     await firebaseSet(gameRef, initialGameState());
+  }, [gameRef]);
+
+  // ── Toggle sequential voting ──
+  const setSequentialVoting = useCallback(async (enabled) => {
+    await firebaseUpdate(gameRef, { sequentialVoting: enabled });
+  }, [gameRef]);
+
+  // ── Toggle simple UX ──
+  const setSimpleUX = useCallback(async (enabled) => {
+    await firebaseUpdate(gameRef, { simpleUX: enabled });
+  }, [gameRef]);
+
+  // ── Toggle minigames setting (writes to Firebase so all clients see it) ──
+  const setMinigamesEnabled = useCallback(async (enabled) => {
+    const updates = { minigamesEnabled: enabled };
+    if (enabled) {
+      const snap = await get(gameRef);
+      const data = firebaseDeserialize(snap.val());
+      if (data?.bracket) {
+        updates.minigameMatchIds = pickMinigameMatchIds(data.bracket, data.bracketSize || 32);
+      }
+    } else {
+      updates.minigameMatchIds = [];
+    }
+    await firebaseUpdate(gameRef, updates);
   }, [gameRef]);
 
   // ── Mark RPS result as visually revealed on the main screen ──
@@ -842,6 +1020,10 @@ export function useGameState(playerId = null, roomCode = null) {
     joinGame, leaveGame, selectCategory, setBracketSize, startGame, setCustomItems,
     vote, startNext, skip, hostPickWinner, startRPS, submitRPS,
     startOneSecond, startOSTimer, stopOSTimer, resolvePreChallenge,
-    playAgain, clearPlayers, setMatchNote, setRpsRevealed, sendReaction, setMinigameSettings,
+    startShapeHalve, submitShapeHalve,
+    playAgain, clearPlayers, setMatchNote, setRpsRevealed, sendReaction,
+    minigamesEnabled, setMinigamesEnabled,
+    sequentialVoting, votingQueue, votingQueueIndex, setSequentialVoting,
+    simpleUX, setSimpleUX,
   };
 }

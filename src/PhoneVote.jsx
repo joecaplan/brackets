@@ -6,14 +6,9 @@ import { useGameState } from "./useGameState.js";
 import { RockIcon, PaperIcon, ScissorsIcon, RpsIcon, SmileIcon, FrownIcon, PoopIcon, SkullIcon, HourglassIcon } from "./RpsIcons.jsx";
 import { allMatches } from "./bracketLogic.js";
 import { PLAYER_COLORS } from "./categories.js";
+import { ShapeHalveRevealSequence } from "./ShapeHalveReveal.jsx";
 
 const CATEGORY_TAGS_LIST = ["Nature", "Food", "Sports", "Media", "Arts", "Things", "Misc"];
-import bumperRound01Src from "./assets/footage/finalCards/Brackets_Round01_Comp_V1.mp4";
-import bumperRound02Src from "./assets/footage/finalCards/Brackets_Round02_Comp_V1.mp4";
-import bumperRound03Src from "./assets/footage/finalCards/Brackets_Round03_Comp_V1.mp4";
-import bumperQFSrc      from "./assets/footage/finalCards/Brackets_Quarterfinals_Comp_V1.mp4";
-import bumperSFSrc      from "./assets/footage/finalCards/Brackets_Semifinals_Comp_V1.mp4";
-import bumperFinalSrc   from "./assets/footage/finalCards/Brackets_FinalRound_Comp_V1.mp4";
 
 // ─── Round helpers ─────────────────────────────────────────────────────────────
 function getRoundLabel(bracket, matchId) {
@@ -42,20 +37,6 @@ function getRoundInfo(bracket, matchId) {
   return null;
 }
 
-function pickBumperSrc(bracket, rIdx, isFinal) {
-  if (isFinal) return bumperFinalSrc;
-  const numRounds = bracket.left.length;
-  const labels = numRounds === 4 ? ["R1", "R2", "QF", "SF"]
-               : numRounds === 3 ? ["R1", "QF", "SF"]
-               :                   ["R1", "SF"];
-  const label = labels[rIdx];
-  if (label === "QF") return bumperQFSrc;
-  if (label === "SF") return bumperSFSrc;
-  if (label === "R1") return bumperRound01Src;
-  if (label === "R2") return bumperRound02Src;
-  if (label === "R3") return bumperRound03Src;
-  return null;
-}
 import chooseAnswerSrc from "./assets/audio/SFX/ChooseAnswer.wav";
 import iconPencilUrl            from "./assets/SVG/iconPencil.svg";
 import cursorPointerRaw    from "./assets/SVG/Cursor_Pointer.svg?raw";
@@ -155,6 +136,174 @@ function BracketTextView({ bracket }) {
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Shape Halve helper: renders the shape SVG with optional cut lines ────────
+function ShapeDisplay({ seed, line, lineColor, size = 260, line2, line2Color }) {
+  const [shape, setShape] = useState(null);
+  useEffect(() => {
+    import("./shapeHalveUtils.js").then(m => setShape(m.generateShape(seed)));
+  }, [seed]);
+
+  // Lines are stored in 0-400 virtual space; SVG viewBox is also 0-400
+  return (
+    <div style={{ width: size, height: size, flexShrink: 0, borderRadius: 8, overflow: "hidden" }}>
+      {shape ? (
+        <svg width={size} height={size} viewBox="0 0 400 400" style={{ display: "block" }}>
+          <path d={shape.svgPath} fill="#0f2e0f" stroke="#2a4a2a" strokeWidth={2} />
+          {line && <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke={lineColor || "#c8f55a"} strokeWidth={4} strokeLinecap="round" />}
+          {line2 && <line x1={line2.x1} y1={line2.y1} x2={line2.x2} y2={line2.y2} stroke={line2Color || "#88aabb"} strokeWidth={4} strokeLinecap="round" />}
+        </svg>
+      ) : (
+        <div style={{ width: size, height: size, background: "#0a1a0a" }} />
+      )}
+    </div>
+  );
+}
+
+// ─── Interactive cut screen for active Shape Halve player ─────────────────────
+function ShapeHalveCutScreen({ seed, myColor, onSubmit, muteButton, reactionBar, preMatch }) {
+  const [shape, setShape] = useState(null);
+  const [dragStart, setDragStart] = useState(null);
+  const [dragEnd, setDragEnd] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const svgRef = useRef(null);
+  const SIZE = 280;
+
+  useEffect(() => {
+    import("./shapeHalveUtils.js").then(m => setShape(m.generateShape(seed)));
+  }, [seed]);
+
+  const getSvgPoint = (e) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const clientX = e.touches ? e.touches[0]?.clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0]?.clientY : e.clientY;
+    if (clientX == null) return null;
+    const x = ((clientX - rect.left) / rect.width) * 400;
+    const y = ((clientY - rect.top) / rect.height) * 400;
+    return { x, y };
+  };
+
+  const handlePointerDown = (e) => {
+    e.preventDefault();
+    const pt = getSvgPoint(e);
+    if (!pt) return;
+    setDragStart(pt);
+    setDragEnd(pt);
+    setErrorMsg("");
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragStart) return;
+    e.preventDefault();
+    const pt = getSvgPoint(e);
+    if (pt) setDragEnd(pt);
+  };
+
+  const handlePointerUp = async (e) => {
+    e.preventDefault();
+    if (!dragStart || !dragEnd || !shape || submitted) return;
+    const dx = dragEnd.x - dragStart.x;
+    const dy = dragEnd.y - dragStart.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 20) {
+      setDragStart(null); setDragEnd(null);
+      return;
+    }
+
+    const utils = await import("./shapeHalveUtils.js");
+    // Both endpoints must be outside the shape (drag fully through it)
+    const startInside = utils.pointInPolygon(dragStart.x, dragStart.y, shape.polyApprox);
+    const endInside   = utils.pointInPolygon(dragEnd.x,   dragEnd.y,   shape.polyApprox);
+    if (startInside || endInside) {
+      setErrorMsg("Draw your line from outside the shape, all the way through to the other side!");
+      setDragStart(null); setDragEnd(null);
+      return;
+    }
+    const hits = utils.lineShapeIntersections(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y, shape.polyApprox);
+    if (hits.length !== 2) {
+      setErrorMsg("Your line must cross through the shape! Try again.");
+      setDragStart(null); setDragEnd(null);
+      return;
+    }
+
+    const ratio = utils.computeAreaRatio(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y, shape.svgPath, shape.polyApprox);
+    const lineData = { x1: dragStart.x, y1: dragStart.y, x2: dragEnd.x, y2: dragEnd.y };
+    setSubmitted(true);
+    await onSubmit(lineData, ratio);
+  };
+
+  return (
+    <div style={{ ...vs.root, gap: 14 }}>
+      {muteButton}
+      <div style={{ fontSize: 11, letterSpacing: 5, color: myColor, textAlign: "center" }}>
+        {preMatch ? "PRE-MATCH CHALLENGE" : "TIEBREAKER"}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: "bold", letterSpacing: 6, color: "#c8f55a", textAlign: "center" }}>
+        SHAPE HALVING
+      </div>
+      <div style={{ fontSize: 11, letterSpacing: 3, color: myColor, textAlign: "center" }}>
+        ★ YOUR TURN — DRAG TO CUT ★
+      </div>
+
+      {/* Interactive SVG */}
+      <div style={{ position: "relative", touchAction: "none", cursor: "crosshair", userSelect: "none" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+      >
+        {shape ? (
+          <svg
+            ref={svgRef}
+            width={SIZE} height={SIZE}
+            viewBox="0 0 400 400"
+            style={{ display: "block", border: `1px solid ${myColor}44`, borderRadius: 8 }}
+          >
+            <path d={shape.svgPath} fill="#0f2e0f" stroke="#2a5a2a" strokeWidth={2} />
+            {dragStart && dragEnd && (
+              <line x1={dragStart.x} y1={dragStart.y} x2={dragEnd.x} y2={dragEnd.y}
+                stroke={myColor} strokeWidth={3} strokeLinecap="round" opacity={0.85} />
+            )}
+          </svg>
+        ) : (
+          <div style={{ width: SIZE, height: SIZE, background: "#0a1a0a", borderRadius: 8 }} />
+        )}
+      </div>
+
+      {errorMsg && (
+        <div style={{ fontSize: 11, letterSpacing: 2, color: "#cc5555", textAlign: "center", padding: "4px 12px",
+          background: "#1a0a0a", border: "1px solid #cc5555", borderRadius: 4 }}>
+          {errorMsg}
+        </div>
+      )}
+      {submitted && (
+        <div style={{ fontSize: 11, letterSpacing: 3, color: "#c8f55a" }}>Cut submitted!</div>
+      )}
+      <div style={{ fontSize: 10, letterSpacing: 2, color: "#4a6a4a", textAlign: "center" }}>
+        Drag a line across the shape to split it in half
+      </div>
+      {reactionBar}
+    </div>
+  );
+}
+
+// ─── Shape Halve results screen ───────────────────────────────────────────────
+function ShapeHalveResultScreen({ sh, p1Name, p2Name, p1Color, p2Color, winnerName, preMatch, p1Option, p2Option, muteButton, reactionBar }) {
+  return (
+    <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
+      {muteButton}
+      <div style={vs.tiebreakerTitle}>SHAPE HALVING</div>
+      <ShapeHalveRevealSequence
+        sh={sh} p1Name={p1Name} p2Name={p2Name}
+        p1Color={p1Color} p2Color={p2Color}
+        winnerName={winnerName} preMatch={preMatch}
+        p1Option={p1Option} p2Option={p2Option}
+        compact
+      />
+      {reactionBar}
     </div>
   );
 }
@@ -275,9 +424,9 @@ function ReactionBar({ sendReaction, myColor }) {
         <input
           type="text"
           value={text}
-          maxLength={20}
+          maxLength={50}
           placeholder="CHAT..."
-          onChange={(e) => setText(e.target.value.toUpperCase().slice(0, 20))}
+          onChange={(e) => setText(e.target.value.toUpperCase().slice(0, 50))}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           style={{ flex: 1, background: "#0a1a0a", border: "1px solid #1a2e1a", borderRadius: 4,
             padding: "8px 12px", color: "#c8f55a", fontFamily: _mono, fontSize: 12,
@@ -418,10 +567,14 @@ export default function PhoneVote() {
     joinGame, leaveGame, selectCategory, setBracketSize, startGame, setCustomItems,
     vote: firebaseVote, skip, hostPickWinner, startRPS, submitRPS,
     startOneSecond, startOSTimer, stopOSTimer, playAgain, sendReaction,
+    startShapeHalve, submitShapeHalve,
+    minigamesEnabled, setMinigamesEnabled,
+    sequentialVoting, setSequentialVoting, votingQueue, votingQueueIndex,
+    simpleUX, setSimpleUX,
   } = useGameState(playerId.current, roomCode);
 
   const myColorHex = PLAYER_COLORS[(playerColors?.[playerId.current] ?? 0) % PLAYER_COLORS.length];
-  const reactionBar = (phase === "playing" || phase === "tiebreaker" || phase === "rps" || phase === "oneSecond")
+  const reactionBar = !simpleUX && (phase === "playing" || phase === "tiebreaker" || phase === "rps" || phase === "oneSecond" || phase === "shapeHalve")
     ? <ReactionBar sendReaction={sendReaction} myColor={myColorHex} />
     : null;
 
@@ -431,6 +584,8 @@ export default function PhoneVote() {
   const [confettiActive, setConfettiActive] = useState(false);
   const prevChampionRef = useRef(null);
   const [showCustomInput, setShowCustomInput] = useState(false);
+  const [hostSettingsConfirmed, setHostSettingsConfirmed] = useState(false);
+  const [minigameRuleExpanded, setMinigameRuleExpanded] = useState(false);
   const [customItems, setCustomItemsLocal] = useState(Array(32).fill(""));
   const [randomMode, setRandomMode] = useState(false);
   const [customError, setCustomError] = useState("");
@@ -441,14 +596,10 @@ export default function PhoneVote() {
   const [muted, setMuted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [osDisplayMs, setOsDisplayMs] = useState(0);
-  const [bumperSrc, setBumperSrc] = useState(null);
-  const [bumperFading, setBumperFading] = useState(false);
   const [selectedTag, setSelectedTag] = useState(null); // null = show all
   const [searchQuery, setSearchQuery] = useState("");
   const osStartRef = useRef(null); // local capture of Date.now() at START press for accurate elapsed
   const lastMatchId = useRef(null);
-  const bumperFadingRef = useRef(false);
-  const lastBumperRoundRef = useRef(null);
   const firebaseBootstrappedRef = useRef(false);
   const rpsChosenRoundRef = useRef(null); // which RPS round the player submitted in
   const categoryScrollRef = useRef(null);
@@ -456,6 +607,14 @@ export default function PhoneVote() {
   const rpsLingerActiveRef  = useRef(false);  // true while in "rps" phase with revealed result
   const rpsLingerEndRef     = useRef(null);   // linger expiry timestamp (ms)
   const [, setRpsLingerTick] = useState(0);   // bumped to force re-render when linger expires
+  const [tutorialDismissed, setTutorialDismissed] = useState(false);
+  const [tutorialTimerMs, setTutorialTimerMs] = useState(0);
+  const [tutorialIdx, setTutorialIdx] = useState(0);
+  const lastMinigamePhaseRef = useRef(null);
+  const [showPhoneIntro, setShowPhoneIntro] = useState(false);
+  const [phoneIntroTyped, setPhoneIntroTyped] = useState("");
+  const phoneIntroHasFinishedRef = useRef(false);
+  const prevPhaseRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem("bracket_pid", playerId.current);
@@ -538,7 +697,7 @@ export default function PhoneVote() {
     setVoted(!!(voters && voters[playerId.current]));
   }, [voters]); // eslint-disable-line
 
-  // Track match changes (for bumper video logic)
+  // Track match changes
   useEffect(() => {
     lastMatchId.current = currentMatchId;
   }, [currentMatchId]);
@@ -550,41 +709,68 @@ export default function PhoneVote() {
     }
   }, [tiebreaker && tiebreaker.rps && tiebreaker.rps.round]); // eslint-disable-line
 
-  // ── Bumper videos: bootstrap (suppress replay on page refresh mid-game) ──
-  useEffect(() => {
-    if (!connected || firebaseBootstrappedRef.current) return;
-    firebaseBootstrappedRef.current = true;
-    if (phase === "playing" && currentMatchId && bracket) {
-      const curr = getRoundInfo(bracket, currentMatchId);
-      if (curr) lastBumperRoundRef.current = { rIdx: curr.rIdx, isFinal: curr.isFinal };
-    }
-  }, [connected, phase, currentMatchId, bracket]); // eslint-disable-line
 
-  // ── Bumper videos: fire on new round ──
+  // Phone intro typewriter — trigger on lobby→playing transition
   useEffect(() => {
-    if (phase !== "playing" || !currentMatchId || !bracket) return;
-    const curr = getRoundInfo(bracket, currentMatchId);
-    if (!curr) return;
-    const last = lastBumperRoundRef.current;
-    const isNewRound = !last
-      || (curr.isFinal !== last.isFinal)
-      || (!curr.isFinal && curr.rIdx !== last.rIdx);
-    if (!isNewRound) return;
-    const src = pickBumperSrc(bracket, curr.rIdx, curr.isFinal);
-    if (src) {
-      lastBumperRoundRef.current = { rIdx: curr.rIdx, isFinal: curr.isFinal };
-      bumperFadingRef.current = false;
-      setBumperFading(false);
-      setBumperSrc(src);
+    if (prevPhaseRef.current === "lobby" && phase === "playing") {
+      phoneIntroHasFinishedRef.current = false;
+      setShowPhoneIntro(true);
+      setPhoneIntroTyped("");
     }
-  }, [currentMatchId, phase]); // eslint-disable-line
+    if (phase === "lobby") phoneIntroHasFinishedRef.current = false;
+    prevPhaseRef.current = phase;
+  }, [phase]); // eslint-disable-line
 
-  // ── Bumper videos: auto-dismiss after fade ──
   useEffect(() => {
-    if (!bumperFading) return;
-    const t = setTimeout(() => { setBumperSrc(null); setBumperFading(false); }, 800);
-    return () => clearTimeout(t);
-  }, [bumperFading]);
+    if (!showPhoneIntro || !category) return;
+    const catDisplay = category === "?????" ? "something" : category;
+    const fullText = `Welcome, bracketeers.\n\nYour task at hand is to work together to determine the best ${catDisplay}.\n\nThis is important work so take your time to discuss, argue, and make your voices heard.\n\nDon't forget—this is the real world. Winning is more important than having fun.`;
+    let i = 0;
+    setPhoneIntroTyped("");
+    const interval = setInterval(() => {
+      i++;
+      setPhoneIntroTyped(fullText.slice(0, i));
+      if (i >= fullText.length) {
+        clearInterval(interval);
+        setTimeout(() => {
+          phoneIntroHasFinishedRef.current = true;
+          setShowPhoneIntro(false);
+        }, 5000);
+      }
+    }, 28);
+    return () => clearInterval(interval);
+  }, [showPhoneIntro]); // eslint-disable-line
+
+  // Reset tutorial dismissed state when entering a new minigame phase
+  useEffect(() => {
+    if (phase === "rps" || phase === "oneSecond") {
+      if (phase !== lastMinigamePhaseRef.current) {
+        lastMinigamePhaseRef.current = phase;
+        setTutorialDismissed(false);
+        setTutorialTimerMs(0);
+        setTutorialIdx(0);
+      }
+    }
+  }, [phase]);
+
+  // Animate the One Second demo timer in the tutorial — cycles through 4 target times
+  useEffect(() => {
+    if (phase !== "oneSecond" || tutorialDismissed) return;
+    const TARGETS = [1150, 873, 1048, 758];
+    let idx = 0;
+    let cycleMs = 0;
+    const id = setInterval(() => {
+      cycleMs += 33;
+      const cycleDuration = TARGETS[idx] + 1950; // 600 pre + T + 1350 post
+      if (cycleMs >= cycleDuration) {
+        cycleMs = 0;
+        idx = (idx + 1) % TARGETS.length;
+        setTutorialIdx(idx);
+      }
+      setTutorialTimerMs(cycleMs);
+    }, 33);
+    return () => clearInterval(id);
+  }, [phase, tutorialDismissed]);
 
   // Live timer for One Second — drives display on all phones while timer is running
   useEffect(() => {
@@ -677,37 +863,6 @@ export default function PhoneVote() {
     localStorage.removeItem("bracket_name");
   };
 
-  // ── Bumper overlay (fixed, renders on top of any screen during gameplay) ──
-  const bumperOverlay = bumperSrc ? (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 999,
-      background: "#060e06",
-      opacity: bumperFading ? 0 : 1,
-      transition: bumperFading ? "opacity 0.667s linear" : "none",
-      pointerEvents: bumperFading ? "none" : "all",
-    }}>
-      <video
-        key={bumperSrc}
-        src={bumperSrc}
-        autoPlay
-        playsInline
-        muted
-        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
-        onTimeUpdate={(e) => {
-          const v = e.target;
-          if (!v.duration || bumperFadingRef.current) return;
-          if (v.duration - v.currentTime <= 8 / 12) {
-            bumperFadingRef.current = true;
-            setBumperFading(true);
-          }
-        }}
-        onEnded={() => {
-          if (!bumperFadingRef.current) { bumperFadingRef.current = true; setBumperFading(true); }
-        }}
-        onError={() => { setBumperSrc(null); setBumperFading(false); bumperFadingRef.current = false; }}
-      />
-    </div>
-  ) : null;
 
   const handleRejoin = () => {
     setLoggedOff(false);
@@ -855,6 +1010,36 @@ export default function PhoneVote() {
     setTimeout(() => setRpsLingerTick(n => n + 1), 1150);
   }
   const showRpsLinger = !!(rpsLingerEndRef.current && Date.now() < rpsLingerEndRef.current);
+
+  // ── Phone intro overlay ──
+  const phoneIntroCatDisplay = category === "?????" ? "something" : (category || "");
+  const phoneIntroFullText = phoneIntroCatDisplay
+    ? `Welcome, bracketeers.\n\nYour task at hand is to work together to determine the best ${phoneIntroCatDisplay}.\n\nThis is important work so take your time to discuss, argue, and make your voices heard.\n\nDon't forget—this is the real world. Winning is more important than having fun.`
+    : "";
+  const showPhoneIntroOverlay = !simpleUX && !phoneIntroHasFinishedRef.current && (
+    showPhoneIntro ||
+    (phase === "playing" && prevPhaseRef.current === "lobby")
+  );
+  if (showPhoneIntroOverlay) {
+    return (
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 800, background: "#060e06",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "48px 28px", boxSizing: "border-box",
+      }}>
+        <style>{`@keyframes blinkPhone { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
+        <div style={{ position: "relative", width: "100%", fontFamily: "'PT Mono', monospace", fontSize: 15, lineHeight: 1.9 }}>
+          <div style={{ visibility: "hidden", whiteSpace: "pre-wrap", userSelect: "none" }}>
+            {phoneIntroFullText}{"▌"}
+          </div>
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, color: "#c8f55a", textShadow: "0 0 20px #c8f55a44", whiteSpace: "pre-wrap" }}>
+            {phoneIntroTyped}
+            {showPhoneIntro && <span style={{ animation: "blinkPhone 0.9s step-end infinite" }}>▌</span>}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Lobby Phase ──
   if (phase === "lobby") {
@@ -1052,8 +1237,135 @@ export default function PhoneVote() {
       );
     }
 
-    if (isHost && category) {
-      // Show 'RANDOM' as the label if randomMode is true and category is Custom
+    if (isHost && category && !hostSettingsConfirmed) {
+      // ── Settings page (between category select and start game) ──
+      const displayCategory = randomMode && category === "Custom" ? "RANDOM" : category;
+      return (
+        <div style={vs.root}>
+          {muteButton}
+          <div style={vs.lobbyTitle}>BRACKETS</div>
+          <div style={vs.categorySelected}>
+            <div style={vs.catLabel}>CATEGORY</div>
+            <div style={vs.catName}>{displayCategory.toUpperCase()}</div>
+          </div>
+
+          <div style={{ width: 280, display: "flex", flexDirection: "column", gap: 20, marginTop: 8 }}>
+            <div style={{ fontSize: 10, letterSpacing: 4, color: "#7a9a7a", textAlign: "left", borderBottom: "1px solid #1a2e1a", paddingBottom: 10 }}>
+              GAME SETTINGS
+            </div>
+
+            {/* Pre-match minigames toggle */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* Main row: label + arrow + pill */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                {/* Label + expand arrow — tapping this expands/collapses */}
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flex: 1 }}
+                  onClick={() => setMinigameRuleExpanded(e => !e)}
+                >
+                  <div style={{ fontSize: 12, letterSpacing: 2, color: minigamesEnabled ? "#c8f55a" : "#4a6a4a" }}>
+                    PRE-MATCH MINIGAMES
+                  </div>
+                  <span style={{
+                    fontSize: 10, color: "#4a6a4a",
+                    display: "inline-block",
+                    transform: minigameRuleExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s",
+                    lineHeight: 1,
+                  }}>▼</span>
+                </div>
+                {/* Pill toggle */}
+                <div
+                  style={{
+                    width: 44, height: 24, borderRadius: 12, flexShrink: 0, cursor: "pointer",
+                    background: minigamesEnabled ? "#1a3a1a" : "#0d180d",
+                    border: `1px solid ${minigamesEnabled ? "#c8f55a" : "#1a2e1a"}`,
+                    position: "relative", transition: "background 0.2s, border-color 0.2s",
+                  }}
+                  onClick={() => setMinigamesEnabled(!minigamesEnabled)}
+                >
+                  <div style={{
+                    position: "absolute", width: 17, height: 17, borderRadius: "50%",
+                    background: minigamesEnabled ? "#c8f55a" : "#2a5a2a",
+                    top: 3, left: minigamesEnabled ? 24 : 3,
+                    transition: "left 0.2s, background 0.2s",
+                    boxShadow: minigamesEnabled ? "0 0 4px #c8f55a88" : "none",
+                  }} />
+                </div>
+              </div>
+              {/* Expandable subtext */}
+              {minigameRuleExpanded && (
+                <div style={{ fontSize: 11, color: "#4a6a4a", letterSpacing: 0.5, lineHeight: 1.5, textAlign: "left" }}>
+                  {`If turned on, ${bracketSize >= 32 ? 5 : bracketSize >= 16 ? 4 : 3} random matchups will start with pre-match minigames between two randomly selected players. The winner of the minigame will get a double-vote on the following matchup. Note: pre-match minigames cannot happen on the final vote because a true champion should earn its trophy.`}
+                </div>
+              )}
+            </div>
+
+            {/* One at a time toggle */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ fontSize: 12, letterSpacing: 2, color: sequentialVoting ? "#c8f55a" : "#4a6a4a" }}>
+                ONE AT A TIME
+              </div>
+              <div
+                style={{
+                  width: 44, height: 24, borderRadius: 12, flexShrink: 0, cursor: "pointer",
+                  background: sequentialVoting ? "#1a3a1a" : "#0d180d",
+                  border: `1px solid ${sequentialVoting ? "#c8f55a" : "#1a2e1a"}`,
+                  position: "relative", transition: "background 0.2s, border-color 0.2s",
+                }}
+                onClick={() => setSequentialVoting(!sequentialVoting)}
+              >
+                <div style={{
+                  position: "absolute", width: 17, height: 17, borderRadius: "50%",
+                  background: sequentialVoting ? "#c8f55a" : "#2a5a2a",
+                  top: 3, left: sequentialVoting ? 24 : 3,
+                  transition: "left 0.2s, background 0.2s",
+                  boxShadow: sequentialVoting ? "0 0 4px #c8f55a88" : "none",
+                }} />
+              </div>
+            </div>
+
+            {/* Simple UX toggle */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ fontSize: 12, letterSpacing: 2, color: simpleUX ? "#c8f55a" : "#4a6a4a" }}>
+                SIMPLE UX
+              </div>
+              <div
+                style={{
+                  width: 44, height: 24, borderRadius: 12, flexShrink: 0, cursor: "pointer",
+                  background: simpleUX ? "#1a3a1a" : "#0d180d",
+                  border: `1px solid ${simpleUX ? "#c8f55a" : "#1a2e1a"}`,
+                  position: "relative", transition: "background 0.2s, border-color 0.2s",
+                }}
+                onClick={() => setSimpleUX(!simpleUX)}
+              >
+                <div style={{
+                  position: "absolute", width: 17, height: 17, borderRadius: "50%",
+                  background: simpleUX ? "#c8f55a" : "#2a5a2a",
+                  top: 3, left: simpleUX ? 24 : 3,
+                  transition: "left 0.2s, background 0.2s",
+                  boxShadow: simpleUX ? "0 0 4px #c8f55a88" : "none",
+                }} />
+              </div>
+            </div>
+          </div>
+
+          <button
+            style={{ ...vs.startGameBtn, width: 280, marginTop: 8 }}
+            onClick={() => setHostSettingsConfirmed(true)}
+          >
+            LOOKS GOOD →
+          </button>
+          <button style={vs.backBtn} onClick={() => { setRandomMode(false); selectCategory(null); }}>
+            ← BACK
+          </button>
+          <button style={vs.logOffBtn} onClick={handleLogOff}>LOG OFF</button>
+        </div>
+      );
+    }
+
+    if (isHost && category && hostSettingsConfirmed) {
+      // ── Start game page ──
       const displayCategory = randomMode && category === "Custom" ? "RANDOM" : category;
       return (
         <div style={vs.root}>
@@ -1069,7 +1381,7 @@ export default function PhoneVote() {
           <button style={{ ...vs.startGameBtn, width: 280 }} onClick={startGame}>
             ▶ START GAME
           </button>
-          <button style={vs.backBtn} onClick={() => { setRandomMode(false); selectCategory(null); }}>
+          <button style={vs.backBtn} onClick={() => setHostSettingsConfirmed(false)}>
             ← BACK
           </button>
           <div style={vs.waitNote}>Waiting for players to join…</div>
@@ -1094,7 +1406,7 @@ export default function PhoneVote() {
         <div style={vs.playerCountLobby}>
           {playerCount} player{playerCount !== 1 ? "s" : ""} joined
         </div>
-        {playerNames && Object.keys(playerNames).length > 0 && (
+        {!simpleUX && playerNames && Object.keys(playerNames).length > 0 && (
           <div style={vs.lobbyNamesList}>
             {Object.entries(playerNames).map(([pid, name], i) => {
               const isMe    = pid === playerId.current;
@@ -1138,18 +1450,18 @@ export default function PhoneVote() {
           <div style={vs.champLabel}>CHAMPION</div>
           <div className="anim-glowPulse" style={vs.champName}>{champion}</div>
         </div>
-        {bracketText && (
+        {!simpleUX && bracketText && (
           <button style={vs.copyBtn} onClick={handleCopy}>
             {copied ? "COPIED!" : "COPY BRACKET"}
           </button>
         )}
-        {bracket && <BracketTextView bracket={bracket} />}
+        {!simpleUX && bracket && <BracketTextView bracket={bracket} />}
         {isHost
           ? <button style={vs.skipBtn} onClick={playAgain}>↺ PLAY AGAIN</button>
           : <div style={{ ...vs.waitNote, marginTop: 16 }}>Host can start a new round</div>
         }
         <button style={vs.logOffBtn} onClick={handleLogOff}>LOG OFF</button>
-        {bumperOverlay}
+
         <Confetti active={confettiActive} />
       </div>
     );
@@ -1162,14 +1474,21 @@ export default function PhoneVote() {
         {muteButton}
         <div style={vs.tiebreakerTitle}>TIE!</div>
         <div style={vs.tiebreakerVs}>{tiebreaker.c0} vs {tiebreaker.c1}</div>
-        <div style={vs.lobbySubtitle}>How to break the tie?</div>
-        <button style={{ ...vs.startGameBtn, width: 280, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={startRPS}>
-          <RockIcon size={22} /> ROCK PAPER SCISSORS
-        </button>
-        <button style={{ ...vs.startGameBtn, width: 280, marginTop: 8 }} onClick={startOneSecond}>
-          ⏱ ONE SECOND
-        </button>
-        <div style={vs.tiebreakerOr}>— OR —</div>
+        {!simpleUX && (
+          <>
+            <div style={vs.lobbySubtitle}>How to break the tie?</div>
+            <button style={{ ...vs.startGameBtn, width: 280, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={startRPS}>
+              <RockIcon size={22} /> ROCK PAPER SCISSORS
+            </button>
+            <button style={{ ...vs.startGameBtn, width: 280, marginTop: 8 }} onClick={startOneSecond}>
+              ⏱ ONE SECOND
+            </button>
+            <button style={{ ...vs.startGameBtn, width: 280, marginTop: 8 }} onClick={startShapeHalve}>
+              ✂ SHAPE HALVING
+            </button>
+            <div style={vs.tiebreakerOr}>— OR —</div>
+          </>
+        )}
         <div style={vs.lobbySubtitle}>Pick the winner:</div>
         <button style={vs.choiceBtn} onClick={() => hostPickWinner(tiebreaker.c0)}
           onTouchEnd={(e) => { e.preventDefault(); hostPickWinner(tiebreaker.c0); }}>
@@ -1179,7 +1498,7 @@ export default function PhoneVote() {
           onTouchEnd={(e) => { e.preventDefault(); hostPickWinner(tiebreaker.c1); }}>
           {tiebreaker.c1}
         </button>
-        {reactionBar}
+        {!simpleUX && reactionBar}
       </div>
     );
   }
@@ -1191,8 +1510,8 @@ export default function PhoneVote() {
         {muteButton}
         <div style={vs.tiebreakerTitle}>TIE!</div>
         <div style={vs.tiebreakerVs}>{tiebreaker.c0} vs {tiebreaker.c1}</div>
-        <div style={vs.status}>Host is deciding how to break the tie…</div>
-        {reactionBar}
+        <div style={vs.status}>Host is deciding…</div>
+        {!simpleUX && reactionBar}
       </div>
     );
   }
@@ -1263,6 +1582,37 @@ export default function PhoneVote() {
             </button>
           </div>
           {reactionBar}
+          {!tutorialDismissed && (
+            <div
+              onClick={() => setTutorialDismissed(true)}
+              style={{ position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px" }}
+            >
+              <style>{`
+                @keyframes rpsPopIn { 0% { transform: scale(0) rotate(-20deg); opacity: 0; } 70% { transform: scale(1.12) rotate(4deg); } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+                @keyframes tapPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+              `}</style>
+              <div style={{ background: "#060e06", border: "1px solid #2a4a2a", borderRadius: 16, padding: "28px 24px", maxWidth: 320, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+                <div style={{ fontSize: 10, letterSpacing: 4, color: "#4a6a4a" }}>{tiebreaker?.preMatch ? "PRE-MATCH CHALLENGE" : "TIEBREAKER"}</div>
+                <div style={{ fontSize: 20, letterSpacing: 3, color: "#c8f55a", fontFamily: _mono }}>ROCK PAPER SCISSORS</div>
+                <div style={{ display: "flex", gap: 28 }}>
+                  {[{ Icon: RockIcon, label: "ROCK", delay: "0.1s" }, { Icon: PaperIcon, label: "PAPER", delay: "0.25s" }, { Icon: ScissorsIcon, label: "SCISSORS", delay: "0.4s" }].map(({ Icon, label, delay }) => (
+                    <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, animation: `rpsPopIn 0.45s ${delay} both` }}>
+                      <Icon size={48} />
+                      <span style={{ fontSize: 9, letterSpacing: 3, color: "#7a9a7a" }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, letterSpacing: 1.5, color: "#7a9a7a", textAlign: "center", lineHeight: 1.9 }}>
+                  {tiebreaker?.preMatch
+                    ? "You've been selected to compete!\nPick your move.\nThe winner gets a double vote."
+                    : `You've been selected to compete for ${mySide}!\nWin the tiebreaker to move ${mySide} into the next round.`}
+                </div>
+                <div style={{ fontSize: 10, letterSpacing: 4, color: "#4a6a4a", animation: "tapPulse 1.5s ease-in-out infinite" }}>
+                  TAP TO CONTINUE
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -1301,6 +1651,15 @@ export default function PhoneVote() {
     const p1Name = (playerNames && playerNames[os.player1]) || "Player 1";
     const p2Name = (playerNames && playerNames[os.player2]) || "Player 2";
 
+    const osPrompt = (elapsed) => {
+      const diff = Math.abs(elapsed - 1000);
+      if (diff === 0) return "PERFECT! All glory to the timer god!";
+      if (diff <= 100) return "Nice job! That's pretty good!";
+      if (diff <= 200) return "Solid! I think you can do better though.";
+      if (diff <= 300) return "Not bad. Not great, but not bad.";
+      return "Oof better luck next time";
+    };
+
     // ── Final result ──
     if (os.osPhase === "done") {
       const d1 = Math.abs(os.elapsed1 - 1000);
@@ -1323,53 +1682,94 @@ export default function PhoneVote() {
             </div>
           </div>
           <div style={vs.champName}>{winnerName} WINS!</div>
+          {(amP1 || amP2) && (
+            <div style={{ fontSize: 12, letterSpacing: 2, color: "#7a9a7a", textAlign: "center", marginTop: 4 }}>
+              {osPrompt(amP1 ? os.elapsed1 : os.elapsed2)}
+            </div>
+          )}
           {reactionBar}
         </div>
       );
     }
 
-    // ── Active player — waiting to start ──
-    if (amActive && (os.osPhase === "waiting_p1" && amP1 || os.osPhase === "waiting_p2" && amP2)) {
+    // Tutorial cursor computation — hoisted so spectator (P2) can also use it
+    const OS_TARGETS = [1150, 873, 1048, 758];
+    const T = OS_TARGETS[tutorialIdx] ?? 1150;
+    const cycleMs = tutorialTimerMs;
+    const TIMER_START = 600;
+    const TRAVEL = 250;
+    const STOP_ARRIVE = TIMER_START + T;
+    const MOVE_START = STOP_ARRIVE - TRAVEL;
+    const timerDisplayMs = Math.max(0, Math.min(cycleMs - TIMER_START, T));
+    const cursorX = cycleMs < MOVE_START ? -58 : cycleMs >= STOP_ARRIVE ? 58 : -58 + ((cycleMs - MOVE_START) / TRAVEL) * 116;
+    const cursorScale = (cycleMs >= 500 && cycleMs < 600) || (cycleMs >= STOP_ARRIVE && cycleMs < STOP_ARRIVE + 50) ? 0.6 : 1;
+    const fadeStart = STOP_ARRIVE + 500;
+    const cursorOpacity = cycleMs < 200 ? 0 : cycleMs < 400 ? (cycleMs - 200) / 200 : cycleMs < fadeStart ? 1 : Math.max(0, 1 - (cycleMs - fadeStart) / 300);
+    const startBtnActive = cycleMs < TIMER_START + 100;
+    const stopBtnActive = cycleMs >= TIMER_START && cycleMs < STOP_ARRIVE + 150;
+    const osTutorialOverlay = !tutorialDismissed && (
+      <div
+        onClick={() => setTutorialDismissed(true)}
+        style={{ position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px" }}
+      >
+        <style>{`@keyframes tapPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }`}</style>
+        <div style={{ background: "#060e06", border: "1px solid #2a4a2a", borderRadius: 16, padding: "28px 24px", maxWidth: 320, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <div style={{ fontSize: 10, letterSpacing: 4, color: "#4a6a4a" }}>{tiebreaker?.preMatch ? "PRE-MATCH CHALLENGE" : "TIEBREAKER"}</div>
+          <div style={{ fontSize: 20, letterSpacing: 3, color: "#c8f55a", fontFamily: _mono }}>ONE SECOND</div>
+          <div style={{ fontSize: 52, fontWeight: "bold", letterSpacing: 2, color: "#c8f55a", fontFamily: _mono, fontVariantNumeric: "tabular-nums", textShadow: "0 0 20px #c8f55a55" }}>
+            {(timerDisplayMs / 1000).toFixed(3)}s
+          </div>
+          <div style={{ width: 220, height: 3, background: "#1a2e1a", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "#c8f55a", borderRadius: 2, width: `${T > 0 ? Math.min(timerDisplayMs / T * 100, 100) : 0}%` }} />
+          </div>
+          <div style={{ position: "relative", display: "flex", gap: 12, width: 220 }}>
+            <div style={{ flex: 1, padding: "14px 0", textAlign: "center", fontFamily: _mono, fontSize: 13, letterSpacing: 3, fontWeight: "bold", color: "#c8f55a", background: "#0a1f0a", border: "2px solid #c8f55a", borderRadius: 8, opacity: startBtnActive ? 1 : 0.25 }}>START</div>
+            <div style={{ flex: 1, padding: "14px 0", textAlign: "center", fontFamily: _mono, fontSize: 13, letterSpacing: 3, fontWeight: "bold", color: "#c85a5a", background: "#1a0a0a", border: "2px solid #c85a5a", borderRadius: 8, opacity: stopBtnActive ? 1 : 0.25 }}>STOP</div>
+            <div style={{ position: "absolute", width: 16, height: 16, borderRadius: "50%", background: "rgba(255,255,255,0.95)", boxShadow: "0 0 10px rgba(200,245,90,0.9)", top: "50%", left: "50%", marginLeft: -8, marginTop: -8, transform: `translateX(${cursorX}px) scale(${cursorScale})`, opacity: cursorOpacity, pointerEvents: "none", zIndex: 2 }} />
+          </div>
+          <div style={{ fontSize: 12, letterSpacing: 1.5, color: "#7a9a7a", textAlign: "center", lineHeight: 1.9 }}>
+            {tiebreaker?.preMatch
+              ? "You've been selected to compete!\nPress START then STOP\nas close to 1.000 seconds as possible.\nClosest to 1.000s wins!"
+              : `You've been selected to compete for ${mySide}!\nWin the tiebreaker to move ${mySide} into the next round.\nPress START then STOP as close to 1.000s as possible.`}
+          </div>
+          <div style={{ fontSize: 10, letterSpacing: 4, color: "#4a6a4a", animation: "tapPulse 1.5s ease-in-out infinite" }}>
+            TAP TO CONTINUE
+          </div>
+        </div>
+      </div>
+    );
+
+    // ── Active player — waiting to start or timer running ──
+    if (amActive && (
+      (os.osPhase === "waiting_p1" && amP1) || (os.osPhase === "waiting_p2" && amP2) ||
+      (os.osPhase === "running_p1" && amP1) || (os.osPhase === "running_p2" && amP2)
+    )) {
+      const isRunning = os.osPhase === "running_p1" || os.osPhase === "running_p2";
       return (
         <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
           {muteButton}
           <div style={vs.tiebreakerTitle}>ONE SECOND</div>
           <div style={vs.lobbySubtitle}>You're playing for</div>
-          <div style={{ fontSize: 20, letterSpacing: 3, color: "#c8f55a", marginBottom: 24 }}>{mySide}</div>
-          <div style={{ fontSize: 11, letterSpacing: 3, color: "#6a8a6a", marginBottom: 16 }}>
-            Press START, then press again to stop as close to 1.000s as possible
+          <div style={{ fontSize: 20, letterSpacing: 3, color: "#c8f55a" }}>{mySide}</div>
+          <div style={vs.osTimerDisplay}>{isRunning ? fmtMs(osDisplayMs) : "0.000"}</div>
+          <div style={{ display: "flex", gap: 12, width: "100%", maxWidth: 280 }}>
+            <button
+              style={{ ...vs.osHalfBtn, opacity: isRunning ? 0.25 : 1 }}
+              disabled={isRunning}
+              onClick={() => { osStartRef.current = Date.now(); startOSTimer(playerId.current); }}
+            >
+              START
+            </button>
+            <button
+              style={{ ...vs.osHalfBtn, background: "#1a0a0a", borderColor: "#c85a5a", color: "#c85a5a", opacity: isRunning ? 1 : 0.25 }}
+              disabled={!isRunning}
+              onClick={() => { const elapsed = osStartRef.current ? Date.now() - osStartRef.current : osDisplayMs; stopOSTimer(playerId.current, elapsed); }}
+            >
+              STOP
+            </button>
           </div>
-          <button
-            style={vs.osBigBtn}
-            onClick={() => {
-              osStartRef.current = Date.now();
-              startOSTimer(playerId.current);
-            }}
-          >
-            PRESS TO START
-          </button>
           {reactionBar}
-        </div>
-      );
-    }
-
-    // ── Active player — timer running ──
-    if (amActive && (os.osPhase === "running_p1" && amP1 || os.osPhase === "running_p2" && amP2)) {
-      return (
-        <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
-          {muteButton}
-          <div style={vs.tiebreakerTitle}>ONE SECOND</div>
-          <div style={vs.osTimerDisplay}>{fmtMs(osDisplayMs)}</div>
-          <button
-            style={{ ...vs.osBigBtn, background: "#1a0a0a", borderColor: "#c85a5a", color: "#c85a5a" }}
-            onClick={() => {
-              const elapsed = osStartRef.current ? Date.now() - osStartRef.current : osDisplayMs;
-              stopOSTimer(playerId.current, elapsed);
-            }}
-          >
-            PRESS TO STOP
-          </button>
-          {reactionBar}
+          {osTutorialOverlay}
         </div>
       );
     }
@@ -1386,6 +1786,9 @@ export default function PhoneVote() {
           </div>
           <div style={{ fontSize: 12, letterSpacing: 3, color: "#7a9a7a" }}>
             ±{fmtMs(Math.abs(os.elapsed1 - 1000))}s from 1.000
+          </div>
+          <div style={{ fontSize: 12, letterSpacing: 2, color: "#7a9a7a", textAlign: "center", marginTop: 4 }}>
+            {osPrompt(os.elapsed1)}
           </div>
           <div style={vs.status}>Waiting for {p2Name}…</div>
           {reactionBar}
@@ -1416,8 +1819,90 @@ export default function PhoneVote() {
           {os.osPhase === "running_p2" && `${p2Name} is timing!`}
         </div>
         {reactionBar}
+        {amP2 && osTutorialOverlay}
       </div>
     );
+  }
+
+  // ── Shape Halve Phase ──
+  if (phase === "shapeHalve" && tiebreaker?.shapeHalve) {
+    const sh = tiebreaker.shapeHalve;
+    const amP1 = playerId.current === sh.player1;
+    const amP2 = playerId.current === sh.player2;
+    const amActive = amP1 || amP2;
+    const p1Name = (playerNames && playerNames[sh.player1]) || "Player 1";
+    const p2Name = (playerNames && playerNames[sh.player2]) || "Player 2";
+    const p1Color = PLAYER_COLORS[(playerColors?.[sh.player1] ?? 0) % PLAYER_COLORS.length];
+    const p2Color = PLAYER_COLORS[(playerColors?.[sh.player2] ?? 0) % PLAYER_COLORS.length];
+    const myColor = amP1 ? p1Color : amP2 ? p2Color : "#c8f55a";
+
+
+    // ── Done — results screen ──
+    if (sh.shPhase === "done") {
+      const winnerName = sh.winner === "p1"
+        ? (tiebreaker.preMatch ? p1Name : tiebreaker.c0)
+        : (tiebreaker.preMatch ? p2Name : tiebreaker.c1);
+      return (
+        <ShapeHalveResultScreen
+          sh={sh} p1Name={p1Name} p2Name={p2Name} p1Color={p1Color} p2Color={p2Color}
+          winnerName={winnerName} preMatch={!!tiebreaker.preMatch}
+          p1Option={tiebreaker.c0} p2Option={tiebreaker.c1}
+          muteButton={muteButton} reactionBar={reactionBar}
+        />
+      );
+    }
+
+    // ── Cutting phase ──
+    if (sh.shPhase === "cutting") {
+      const mySubmitted = (amP1 && sh.ratio1 != null) || (amP2 && sh.ratio2 != null);
+      const otherName = amP1 ? p2Name : p1Name;
+
+      // Active player who hasn't cut yet — show interactive canvas
+      if (amActive && !mySubmitted) {
+        return (
+          <ShapeHalveCutScreen
+            seed={sh.seed} myColor={myColor}
+            onSubmit={(lineData, ratio) => submitShapeHalve(playerId.current, lineData, ratio)}
+            muteButton={muteButton} reactionBar={reactionBar}
+            preMatch={!!tiebreaker.preMatch}
+          />
+        );
+      }
+
+      // Active player who already submitted — show their cut + waiting
+      if (amActive && mySubmitted) {
+        const myLine = amP1 ? sh.line1 : sh.line2;
+        const myRatio = amP1 ? sh.ratio1 : sh.ratio2;
+        return (
+          <div style={{ ...vs.root, gap: 16 }}>
+            {muteButton}
+            <div style={vs.tiebreakerTitle}>SHAPE HALVING</div>
+            <ShapeDisplay seed={sh.seed} line={myLine} lineColor={myColor} size={240} />
+            <div style={{ textAlign: "center", fontFamily: "'PT Mono', monospace" }}>
+              <div style={{ fontSize: 11, letterSpacing: 3, color: "#6a8a6a", marginBottom: 4 }}>YOUR CUT</div>
+              <div style={{ fontSize: 18, color: "#c8f55a", letterSpacing: 1 }}>{(myRatio * 100).toFixed(1)}% off center</div>
+            </div>
+            <div style={{ fontSize: 11, letterSpacing: 3, color: "#6a8a6a" }}>
+              Waiting for {otherName}…
+            </div>
+            {reactionBar}
+          </div>
+        );
+      }
+
+      // Spectator — show shape with no lines (both cutting simultaneously)
+      return (
+        <div style={{ ...vs.root, gap: 16 }}>
+          {muteButton}
+          <div style={vs.tiebreakerTitle}>SHAPE HALVING</div>
+          <ShapeDisplay seed={sh.seed} size={240} />
+          <div style={{ fontSize: 13, letterSpacing: 3, color: "#6a8a6a", textAlign: "center" }}>
+            {p1Name} &amp; {p2Name} are cutting…
+          </div>
+          {reactionBar}
+        </div>
+      );
+    }
   }
 
   // ── RPS result linger screen — must come before all vote-screen guards so
@@ -1456,7 +1941,7 @@ export default function PhoneVote() {
           <div style={vs.status}>Waiting for next match…</div>
         </div>
         <button style={vs.logOffBtn} onClick={handleLogOff}>LOG OFF</button>
-        {bumperOverlay}
+
       </div>
     );
   }
@@ -1491,14 +1976,14 @@ export default function PhoneVote() {
         <div style={vs.votedBox}>
           <div className="anim-voteCheckIn" style={vs.votedCheck}>✓</div>
           <div className="anim-slideUp" style={{ ...vs.votedText, animationDelay: "80ms" }}>Vote submitted!</div>
-          {roundLabelV && (
+          {!simpleUX && roundLabelV && (
             <div className={roundLabelV === "THE FINAL" ? "anim-finalGlow" : ""} style={{
               ...vs.roundBadge,
               marginBottom: 0,
               ...(roundLabelV === "THE FINAL" ? { fontSize: 11, letterSpacing: 6, color: "#c8f55a", padding: "6px 20px" } : {}),
             }}>{roundLabelV}</div>
           )}
-          {vvTotal > 0 && vc0 && vc1 && (
+          {!simpleUX && vvTotal > 0 && vc0 && vc1 && (
             <div style={{ width: "100%", marginTop: 4 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, letterSpacing: 2, color: "#7a9a7a", marginBottom: 4 }}>
                 <span>{vc0}</span>
@@ -1517,7 +2002,7 @@ export default function PhoneVote() {
           <div style={vs.votedCount}>
             {votedCount}/{totalPlayers} voted
           </div>
-          {myScore && myScore.total > 0 && (
+          {!simpleUX && myScore && myScore.total > 0 && (
             <div style={{ fontSize: 10, letterSpacing: 2, color: "#7a9a7a", marginTop: 4 }}>
               YOUR ACCURACY: <span style={{ color: "#c8f55a" }}>{Math.round((myScore.correct / myScore.total) * 100)}%</span>
               {" "}<span style={{ color: "#6a8a6a" }}>({myScore.correct}/{myScore.total})</span>
@@ -1528,8 +2013,73 @@ export default function PhoneVote() {
         {isHost && (
           <button style={vs.skipBtn} onClick={skip}>SKIP →</button>
         )}
-        {bumperOverlay}
-        {reactionBar}
+        {!simpleUX && reactionBar}
+      </div>
+    );
+  }
+
+  // ── Sequential voting: not my turn yet ──
+  const isMyTurn = !sequentialVoting || votingQueue[votingQueueIndex] === playerId.current;
+  if (sequentialVoting && !isMyTurn) {
+    const currentVoterPid  = votingQueue[votingQueueIndex];
+    const currentVoterName = playerNames?.[currentVoterPid] || "?";
+    const currentVoterColor = PLAYER_COLORS[(playerColors?.[currentVoterPid] ?? 0) % PLAYER_COLORS.length];
+    const myQueuePos = votingQueue.indexOf(playerId.current);
+    const turnsLeft  = myQueuePos >= 0 ? myQueuePos - votingQueueIndex : votingQueue.length - votingQueueIndex;
+    return (
+      <div style={{ ...vs.root, justifyContent: "center", gap: 20 }}>
+        {muteButton}
+        {!simpleUX && <div style={{ fontSize: 9, letterSpacing: 5, color: "#4a6a4a" }}>SEQUENTIAL VOTING</div>}
+        {/* Current voter spotlight */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+          background: "#060e06", border: `2px solid ${currentVoterColor}`,
+          borderRadius: 16, padding: "24px 32px",
+          boxShadow: `0 0 24px ${currentVoterColor}44` }}>
+          <div style={{ fontSize: 11, letterSpacing: 4, color: "#6a8a6a" }}>NOW VOTING</div>
+          <div style={{ fontSize: 28, letterSpacing: 2, color: currentVoterColor, fontWeight: "bold",
+            animation: "blink 1.4s step-end infinite" }}>
+            {currentVoterName}
+          </div>
+          {!simpleUX && (
+            <div style={{ fontSize: 10, letterSpacing: 2, color: "#6a8a6a" }}>
+              {votingQueueIndex + 1} of {votingQueue.length}
+            </div>
+          )}
+        </div>
+        {/* My position in queue */}
+        {myQueuePos >= 0 && (
+          <div style={{ fontSize: 11, letterSpacing: 3, color: "#4a6a4a" }}>
+            YOUR TURN IN <span style={{ color: myColorHex }}>{turnsLeft}</span>
+          </div>
+        )}
+        {/* Queue list */}
+        {!simpleUX && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%", maxWidth: 240 }}>
+            {votingQueue.map((pid, i) => {
+              const color   = PLAYER_COLORS[(playerColors?.[pid] ?? 0) % PLAYER_COLORS.length];
+              const isCur   = i === votingQueueIndex;
+              const isDone  = i < votingQueueIndex;
+              const isMe    = pid === playerId.current;
+              return (
+                <div key={pid} style={{ display: "flex", alignItems: "center", gap: 10,
+                  opacity: isDone ? 0.4 : isCur ? 1 : 0.6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                    background: isCur ? color : isDone ? color : "transparent",
+                    border: `2px solid ${color}`,
+                    boxShadow: isCur ? `0 0 8px ${color}` : "none" }} />
+                  <span style={{ fontSize: 12, letterSpacing: 1, color: isCur ? color : "#6a8a6a",
+                    fontWeight: isCur || isMe ? "bold" : "normal" }}>
+                    {playerNames?.[pid] || "?"}
+                    {isMe ? " (you)" : ""}
+                  </span>
+                  {isDone && <span style={{ marginLeft: "auto", fontSize: 10, color: "#4a6a4a" }}>✓</span>}
+                  {isCur && <span style={{ marginLeft: "auto", fontSize: 9, color, animation: "blink 0.9s step-end infinite" }}>●</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!simpleUX && reactionBar}
       </div>
     );
   }
@@ -1539,13 +2089,21 @@ export default function PhoneVote() {
   const isFinal = roundLabel === "THE FINAL";
   return (
     <div style={{ ...vs.root, paddingBottom: "max(180px, calc(env(safe-area-inset-bottom) + 160px))" }}>
-      <BracketBotVertical color={myColorHex} />
+      {!simpleUX && <BracketBotVertical color={myColorHex} />}
       {muteButton}
-      {roundLabel && (
+      {!simpleUX && roundLabel && (
         <div className={isFinal ? "anim-finalGlow" : ""} style={{
           ...vs.roundBadge,
           ...(isFinal ? { fontSize: 11, letterSpacing: 6, color: "#c8f55a", padding: "6px 20px" } : {}),
         }}>{roundLabel}</div>
+      )}
+      {/* Sequential: YOUR TURN banner */}
+      {sequentialVoting && (
+        <div style={{ fontSize: 13, letterSpacing: 5, color: myColorHex, background: "#060e06",
+          border: `2px solid ${myColorHex}`, borderRadius: 20, padding: "6px 20px",
+          boxShadow: `0 0 16px ${myColorHex}66`, animation: "voteDotIn 0.3s ease both" }}>
+          ★ YOUR TURN ★
+        </div>
       )}
       {doubleVoter === playerId.current && (
         <div style={{ fontSize: 11, letterSpacing: 4, color: "#c8f55a", background: "#0a1f0a",
@@ -1554,13 +2112,13 @@ export default function PhoneVote() {
           ⚡ YOUR VOTE COUNTS DOUBLE!
         </div>
       )}
-      {doubleVoter && doubleVoter !== playerId.current && (
+      {!simpleUX && doubleVoter && doubleVoter !== playerId.current && (
         <div style={{ fontSize: 10, letterSpacing: 3, color: "#7a9a7a", background: "#0a1a0a",
           border: "1px solid #1a2e1a", borderRadius: 20, padding: "4px 14px" }}>
           ⚡ {playerNames?.[doubleVoter] || "?"} votes double this round
         </div>
       )}
-      <div style={vs.header}>TAP TO VOTE</div>
+      {!simpleUX && <div style={vs.header}>TAP TO VOTE</div>}
       <button style={vs.choiceBtn} onClick={() => vote(c0)}
         onTouchEnd={(e) => { e.preventDefault(); vote(c0); }}>
         {c0}
@@ -1576,8 +2134,7 @@ export default function PhoneVote() {
       {isHost && (
         <button style={vs.skipBtn} onClick={skip}>SKIP →</button>
       )}
-      {bumperOverlay}
-      {reactionBar}
+      {!simpleUX && reactionBar}
     </div>
   );
 }
@@ -1694,6 +2251,12 @@ const vs = {
   },
   osBigBtn: {
     width: 280, padding: "28px 0", fontSize: 18,
+    fontWeight: "bold", letterSpacing: 4, fontFamily: _mono,
+    background: "#0a1f0a", color: "#c8f55a", border: "2px solid #c8f55a",
+    borderRadius: 8, cursor: "pointer", ..._tap,
+  },
+  osHalfBtn: {
+    flex: 1, padding: "22px 0", fontSize: 16,
     fontWeight: "bold", letterSpacing: 4, fontFamily: _mono,
     background: "#0a1f0a", color: "#c8f55a", border: "2px solid #c8f55a",
     borderRadius: 8, cursor: "pointer", ..._tap,

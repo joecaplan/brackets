@@ -1,21 +1,24 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRive, Layout, Fit, Alignment } from "@rive-app/react-webgl2";
-import bracketBotMainRiv     from "./assets/rive/bracketbot_main.riv";
-import bracketBotMapRiv      from "./assets/rive/bracketbot_map.riv";
-import bracketBotVerticalRiv from "./assets/rive/bracketbot_vertical.riv";
 import { allMatches } from "./bracketLogic.js";
 import { useGameState } from "./useGameState.js";
 import { PLAYER_COLORS } from "./categories.js";
 import { RockIcon, RpsIcon, ReactionIcon } from "./RpsIcons.jsx";
+import { ShapeHalveRevealSequence } from "./ShapeHalveReveal.jsx";
 import { QRCodeSVG } from "qrcode.react";
+import bracketBotMainRiv from "./assets/rive/bracketbot_main.riv";
 
 // Audio & video assets
-import menuSongSrc from "./assets/audio/Music/Menu_SongLoop.wav";
+import menuSongSrc from "./assets/audio/Music/BlanketForts.mp3";
 import gameSongSrc from "./assets/audio/Music/Game_Song.wav";
 import endSongSrc from "./assets/audio/Music/End_Song.wav";
 import rpsBeatSrc from "./assets/audio/Music/RPS-Beat.wav";
 import oneSecondMusicSrc from "./assets/audio/Music/OneSecond_Music_01.wav";
 import startSfxSrc from "./assets/audio/SFX/Start.wav";
+import typingSfxSrc from "./assets/audio/SFX/Typing.wav";
+// Intro voice-over — uncomment and point to your MP3 when ready:
+// import introVoiceSrc from "./assets/audio/VO/Intro.mp3";
+const introVoiceSrc = null; // replace null with the import above
 import startAgainSrc from "./assets/audio/SFX/StartAgain.wav";
 import playerAddSrc from "./assets/audio/SFX/PlayerAdd.wav";
 import resetPlayersSrc from "./assets/audio/SFX/ResetPlayers.wav";
@@ -204,6 +207,18 @@ function getRoundInfo(bracket, matchId) {
   }
   if (bracket.final?.id === matchId) return { rIdx: bracket.left.length, isFinal: true };
   return null;
+}
+
+// Human-readable round label for a given match
+function getMatchRoundLabel(bracket, matchId) {
+  const info = getRoundInfo(bracket, matchId);
+  if (!info) return "RESULT";
+  if (info.isFinal) return "THE FINAL";
+  const numRounds = bracket.left.length;
+  const labels = numRounds === 4 ? ["ROUND 1", "ROUND 2", "QUARTERFINALS", "SEMIFINALS"]
+               : numRounds === 3 ? ["ROUND 1", "QUARTERFINALS", "SEMIFINALS"]
+               :                   ["ROUND 1", "SEMIFINALS"];
+  return labels[info.rIdx] ?? "ROUND";
 }
 
 // Returns the bumper video src for the given round, based on round label
@@ -527,7 +542,7 @@ function Confetti({ active }) {
 }
 
 // ─── Match status panel ──────────────────────────────────────────────────────
-function MatchStatus({ match, votedCount, totalPlayers, voters, playerNames, playerColors, matchNote, setMatchNote, isHost }) {
+function MatchStatus({ match, votedCount, totalPlayers, voters, playerNames, playerColors, matchNote, setMatchNote, isHost, sequentialVoting, votingQueue, votingQueueIndex }) {
   const [c0, c1] = match.contenders;
   const v0    = (c0 && match.votes[c0]) || 0;
   const v1    = (c1 && match.votes[c1]) || 0;
@@ -539,10 +554,28 @@ function MatchStatus({ match, votedCount, totalPlayers, voters, playerNames, pla
   // Reset input when match changes
   useEffect(() => { setNoteInput(matchNote || ""); }, [match.id]); // eslint-disable-line
 
+  const currentVoterPid  = sequentialVoting ? (votingQueue[votingQueueIndex] ?? null) : null;
+  const currentVoterName = currentVoterPid ? (playerNames[currentVoterPid] || "?") : null;
+  const currentVoterColor = currentVoterPid
+    ? PLAYER_COLORS[(playerColors?.[currentVoterPid] ?? 0) % PLAYER_COLORS.length]
+    : "#c8f55a";
+
   return (
     <div style={s.panel}>
       <div style={s.panelInner}>
-        <div style={s.matchTag}>NOW VOTING</div>
+        {sequentialVoting && currentVoterName ? (
+          <div style={{ textAlign: "center", marginBottom: 4 }}>
+            <div style={{ fontSize: 9, letterSpacing: 4, color: "#6a8a6a" }}>NOW VOTING</div>
+            <div style={{ fontSize: 17, letterSpacing: 2, color: currentVoterColor, fontWeight: "bold", marginTop: 2 }}>
+              {currentVoterName}
+            </div>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: "#4a6a4a", marginTop: 1 }}>
+              {Math.min(votingQueueIndex + 1, votingQueue.length)} of {votingQueue.length}
+            </div>
+          </div>
+        ) : (
+          <div style={s.matchTag}>NOW VOTING</div>
+        )}
         <div style={s.vsRow}>
           {/* Left contender */}
           <div style={{ ...s.statusContender, background: v0 > v1 && total > 0 ? "#0c1d0c" : "#0f1f0f" }}>
@@ -571,8 +604,42 @@ function MatchStatus({ match, votedCount, totalPlayers, voters, playerNames, pla
           </div>
         )}
 
-        {/* Player vote dots — glow in their color when they've voted */}
-        {playerPids.length > 0 && (
+        {/* Sequential: revealed vote list. Normal: colored dots */}
+        {sequentialVoting && votingQueue.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 8, maxHeight: 140, overflowY: "auto" }}>
+            {votingQueue.map((pid, i) => {
+              const color    = PLAYER_COLORS[(playerColors?.[pid] ?? 0) % PLAYER_COLORS.length];
+              const choice   = voters?.[pid];
+              const isCurrent = i === votingQueueIndex;
+              const hasDone   = i < votingQueueIndex;
+              return (
+                <div key={pid} style={{ display: "flex", alignItems: "center", gap: 7,
+                  opacity: hasDone || isCurrent ? 1 : 0.3 }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                    background: hasDone ? color : isCurrent ? color : "transparent",
+                    border: `2px solid ${color}`,
+                    boxShadow: isCurrent ? `0 0 8px ${color}` : "none",
+                    animation: isCurrent ? "voteDotIn 0.4s ease both" : "none",
+                  }} />
+                  <span style={{ fontSize: 10, letterSpacing: 1, color: isCurrent ? color : hasDone ? "#8aaa8a" : "#4a6a4a", fontWeight: isCurrent ? "bold" : "normal" }}>
+                    {playerNames[pid] || "?"}
+                  </span>
+                  {choice && (
+                    <span style={{ fontSize: 10, letterSpacing: 1, color: "#c8f55a", marginLeft: "auto" }}>
+                      → {choice}
+                    </span>
+                  )}
+                  {isCurrent && !choice && (
+                    <span style={{ fontSize: 9, color: color, marginLeft: "auto", animation: "blink 0.9s step-end infinite" }}>
+                      VOTING…
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : playerPids.length > 0 && (
           <div style={{ display: "flex", justifyContent: "center", gap: 7, marginTop: 7, flexWrap: "wrap" }}>
             {playerPids.map(pid => {
               const colorIdx = playerColors?.[pid] ?? 0;
@@ -689,45 +756,47 @@ function BigOneSecondPanel({ tiebreaker, playerNames, playerColors, preMatch }) 
         <span style={{ color: c0Color }}>{p1Name}</span>&nbsp;&nbsp;<span style={{ color: "#1e3e1e" }}>vs</span>&nbsp;&nbsp;<span style={{ color: c1Color }}>{p2Name}</span>
       </div>
 
-      {/* Category boxes */}
-      <div style={{ display: "flex", gap: 32, width: "100%", maxWidth: 640, justifyContent: "center" }}>
-        <div style={{
-          ...catBox,
-          border: `1px solid ${os.winner === "p1" ? c0Color : "#1a2e1a"}`,
-          boxShadow: os.winner === "p1" ? `0 0 32px ${c0Color}44` : "none",
-        }}>
-          <div style={{ fontSize: 13, letterSpacing: 2, color: c0Color, textAlign: "center" }}>{tiebreaker.c0}</div>
-          {os.elapsed1 != null && (
-            <div style={{ fontSize: 34, fontWeight: "bold", color: os.winner === "p1" ? "#c8f55a" : "#7a9a7a",
-              fontVariantNumeric: "tabular-nums" }}>
-              {fmtMs(os.elapsed1)}s
-            </div>
-          )}
-          {os.elapsed1 != null && (
-            <div style={{ fontSize: 11, color: "#6a8a6a", letterSpacing: 1 }}>
-              {fmtMs(Math.abs(os.elapsed1 - 1000))}s from 1s
-            </div>
-          )}
+      {/* Category boxes — hidden during pre-match (player vs player for double vote) */}
+      {!preMatch && (
+        <div style={{ display: "flex", gap: 32, width: "100%", maxWidth: 640, justifyContent: "center" }}>
+          <div style={{
+            ...catBox,
+            border: `1px solid ${os.winner === "p1" ? c0Color : "#1a2e1a"}`,
+            boxShadow: os.winner === "p1" ? `0 0 32px ${c0Color}44` : "none",
+          }}>
+            <div style={{ fontSize: 13, letterSpacing: 2, color: c0Color, textAlign: "center" }}>{tiebreaker.c0}</div>
+            {os.elapsed1 != null && (
+              <div style={{ fontSize: 34, fontWeight: "bold", color: os.winner === "p1" ? "#c8f55a" : "#7a9a7a",
+                fontVariantNumeric: "tabular-nums" }}>
+                {fmtMs(os.elapsed1)}s
+              </div>
+            )}
+            {os.elapsed1 != null && (
+              <div style={{ fontSize: 11, color: "#6a8a6a", letterSpacing: 1 }}>
+                {fmtMs(Math.abs(os.elapsed1 - 1000))}s from 1s
+              </div>
+            )}
+          </div>
+          <div style={{
+            ...catBox,
+            border: `1px solid ${os.winner === "p2" ? c1Color : "#1a2e1a"}`,
+            boxShadow: os.winner === "p2" ? `0 0 32px ${c1Color}44` : "none",
+          }}>
+            <div style={{ fontSize: 13, letterSpacing: 2, color: c1Color, textAlign: "center" }}>{tiebreaker.c1}</div>
+            {os.elapsed2 != null && (
+              <div style={{ fontSize: 34, fontWeight: "bold", color: os.winner === "p2" ? "#c8f55a" : "#7a9a7a",
+                fontVariantNumeric: "tabular-nums" }}>
+                {fmtMs(os.elapsed2)}s
+              </div>
+            )}
+            {os.elapsed2 != null && (
+              <div style={{ fontSize: 11, color: "#6a8a6a", letterSpacing: 1 }}>
+                {fmtMs(Math.abs(os.elapsed2 - 1000))}s from 1s
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{
-          ...catBox,
-          border: `1px solid ${os.winner === "p2" ? c1Color : "#1a2e1a"}`,
-          boxShadow: os.winner === "p2" ? `0 0 32px ${c1Color}44` : "none",
-        }}>
-          <div style={{ fontSize: 13, letterSpacing: 2, color: c1Color, textAlign: "center" }}>{tiebreaker.c1}</div>
-          {os.elapsed2 != null && (
-            <div style={{ fontSize: 34, fontWeight: "bold", color: os.winner === "p2" ? "#c8f55a" : "#7a9a7a",
-              fontVariantNumeric: "tabular-nums" }}>
-              {fmtMs(os.elapsed2)}s
-            </div>
-          )}
-          {os.elapsed2 != null && (
-            <div style={{ fontSize: 11, color: "#6a8a6a", letterSpacing: 1 }}>
-              {fmtMs(Math.abs(os.elapsed2 - 1000))}s from 1s
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Big live timer */}
       <div style={{ minHeight: 110, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
@@ -885,29 +954,31 @@ function BigRpsPanel({ tiebreaker, playerNames, playerColors, onWinnerRevealed, 
         <span style={{ color: c0Color }}>{name1}</span>&nbsp;&nbsp;<span style={{ color: "#1e3e1e" }}>vs</span>&nbsp;&nbsp;<span style={{ color: c1Color }}>{name2}</span>
       </div>
 
-      {/* Category boxes */}
-      <div style={{ display: "flex", gap: 32, width: "100%", maxWidth: 560, justifyContent: "center" }}>
-        <div style={{
-          ...catBox,
-          border: `1px solid ${p1Winner ? c0Color : "#1a2e1a"}`,
-          boxShadow: p1Winner ? `0 0 32px ${c0Color}44` : "none",
-        }}>
-          <div style={{ fontSize: 12, letterSpacing: 2, color: c0Color, textAlign: "center" }}>{tiebreaker.c0}</div>
-          {p1Winner && rps.choice1 && (
-            <div style={{ fontSize: 11, letterSpacing: 2, color: c0Color }}>{rps.choice1.toUpperCase()}</div>
-          )}
+      {/* Category boxes — hidden during pre-match (player vs player for double vote) */}
+      {!preMatch && (
+        <div style={{ display: "flex", gap: 32, width: "100%", maxWidth: 560, justifyContent: "center" }}>
+          <div style={{
+            ...catBox,
+            border: `1px solid ${p1Winner ? c0Color : "#1a2e1a"}`,
+            boxShadow: p1Winner ? `0 0 32px ${c0Color}44` : "none",
+          }}>
+            <div style={{ fontSize: 12, letterSpacing: 2, color: c0Color, textAlign: "center" }}>{tiebreaker.c0}</div>
+            {p1Winner && rps.choice1 && (
+              <div style={{ fontSize: 11, letterSpacing: 2, color: c0Color }}>{rps.choice1.toUpperCase()}</div>
+            )}
+          </div>
+          <div style={{
+            ...catBox,
+            border: `1px solid ${p2Winner ? c1Color : "#1a2e1a"}`,
+            boxShadow: p2Winner ? `0 0 32px ${c1Color}44` : "none",
+          }}>
+            <div style={{ fontSize: 12, letterSpacing: 2, color: c1Color, textAlign: "center" }}>{tiebreaker.c1}</div>
+            {p2Winner && rps.choice2 && (
+              <div style={{ fontSize: 11, letterSpacing: 2, color: c1Color }}>{rps.choice2.toUpperCase()}</div>
+            )}
+          </div>
         </div>
-        <div style={{
-          ...catBox,
-          border: `1px solid ${p2Winner ? c1Color : "#1a2e1a"}`,
-          boxShadow: p2Winner ? `0 0 32px ${c1Color}44` : "none",
-        }}>
-          <div style={{ fontSize: 12, letterSpacing: 2, color: c1Color, textAlign: "center" }}>{tiebreaker.c1}</div>
-          {p2Winner && rps.choice2 && (
-            <div style={{ fontSize: 11, letterSpacing: 2, color: c1Color }}>{rps.choice2.toUpperCase()}</div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Icon zone — position:relative so icons can be absolutely placed */}
       <div style={{ position: "relative", width: "100%", maxWidth: 720, height: 220 }}>
@@ -964,8 +1035,90 @@ function BigRpsPanel({ tiebreaker, playerNames, playerColors, onWinnerRevealed, 
   );
 }
 
+// ─── Shape Halve — big fullscreen panel ──────────────────────────────────────
+function BigShapeHalvePanel({ tiebreaker, playerNames, playerColors, preMatch }) {
+  const sh = tiebreaker.shapeHalve;
+  const [shape, setShape] = useState(null);
+  useEffect(() => {
+    import("./shapeHalveUtils.js").then(m => setShape(m.generateShape(sh.seed)));
+  }, [sh.seed]);
+
+  const p1Name = (playerNames && playerNames[sh.player1]) || "Player 1";
+  const p2Name = (playerNames && playerNames[sh.player2]) || "Player 2";
+  const p1Color = PLAYER_COLORS[(playerColors?.[sh.player1] ?? 0) % PLAYER_COLORS.length];
+  const p2Color = PLAYER_COLORS[(playerColors?.[sh.player2] ?? 0) % PLAYER_COLORS.length];
+
+  const header = (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, flexShrink: 0 }}>
+      {preMatch && (
+        <div style={{ fontSize: 11, letterSpacing: 6, color: "#c8f55a", background: "#0a1f0a",
+          border: "1px solid #c8f55a", borderRadius: 20, padding: "4px 16px" }}>
+          ⚡ PRE-MATCH CHALLENGE
+        </div>
+      )}
+      <div style={{ fontSize: 28, fontWeight: "bold", letterSpacing: 8, color: "#c8f55a",
+        textAlign: "center", textShadow: "0 0 20px #c8f55a44" }}>
+        SHAPE HALVING
+      </div>
+    </div>
+  );
+
+  // ── Done — dramatic reveal sequence ──
+  if (sh.shPhase === "done") {
+    const winnerName = sh.winner === "p1"
+      ? (preMatch ? p1Name : tiebreaker.c0)
+      : (preMatch ? p2Name : tiebreaker.c1);
+    return (
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+        justifyContent: "center", gap: 16, padding: "24px 48px",
+        position: "relative", overflow: "hidden",
+      }}>
+        {header}
+        <ShapeHalveRevealSequence
+          sh={sh} p1Name={p1Name} p2Name={p2Name}
+          p1Color={p1Color} p2Color={p2Color}
+          winnerName={winnerName} preMatch={preMatch}
+          p1Option={tiebreaker.c0} p2Option={tiebreaker.c1}
+        />
+      </div>
+    );
+  }
+
+  // ── Cutting phase ──
+  let statusText = "";
+  if (sh.shPhase === "cutting") {
+    const d1 = sh.ratio1 != null, d2 = sh.ratio2 != null;
+    if (!d1 && !d2) statusText = "Both players are cutting\u2026";
+    else if (d1 && !d2) statusText = `${p1Name} done \u00B7 Waiting for ${p2Name}\u2026`;
+    else if (!d1 && d2) statusText = `${p2Name} done \u00B7 Waiting for ${p1Name}\u2026`;
+  }
+
+  return (
+    <div style={{
+      flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", gap: 24, padding: "24px 48px",
+      position: "relative", overflow: "hidden",
+    }}>
+      {header}
+      <div style={{ position: "relative", width: 300, height: 300, flexShrink: 0 }}>
+        {shape ? (
+          <svg width={300} height={300} viewBox="0 0 400 400" style={{ display: "block" }}>
+            <path d={shape.svgPath} fill="#0f2e0f" stroke="#2a4a2a" strokeWidth={2} />
+          </svg>
+        ) : (
+          <div style={{ width: 300, height: 300, background: "#0a1a0a", border: "1px solid #1a2e1a" }} />
+        )}
+      </div>
+      <div style={{ fontSize: 14, letterSpacing: 3, color: "#6a8a6a", textAlign: "center" }}>
+        {statusText}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tiebreaker decision panel (host picks method) ────────────────────────────
-function TiebreakerPanel({ tiebreaker, isHost, hostPickWinner, startRPS, startOneSecond, voters, playerColors }) {
+function TiebreakerPanel({ tiebreaker, isHost, hostPickWinner, startRPS, startOneSecond, startShapeHalve, voters, playerColors }) {
   if (!tiebreaker) return null;
   const c0Pid = Object.entries(voters || {}).find(([, v]) => v === tiebreaker.c0)?.[0];
   const c1Pid = Object.entries(voters || {}).find(([, v]) => v === tiebreaker.c1)?.[0];
@@ -990,6 +1143,7 @@ function TiebreakerPanel({ tiebreaker, isHost, hostPickWinner, startRPS, startOn
           <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <button style={{ ...s.startBtn, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={startRPS}><RockIcon size={18} /> RPS</button>
             <button style={s.startBtn} onClick={startOneSecond}>\u23F1 ONE SECOND</button>
+            <button style={{ ...s.startBtn, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={startShapeHalve}>&#9986; SHAPE HALVE</button>
             <button style={s.startBtn} onClick={() => hostPickWinner(tiebreaker.c0)}>{tiebreaker.c0}</button>
             <button style={s.startBtn} onClick={() => hostPickWinner(tiebreaker.c1)}>{tiebreaker.c1}</button>
           </div>
@@ -1002,49 +1156,6 @@ function TiebreakerPanel({ tiebreaker, isHost, hostPickWinner, startRPS, startOn
   );
 }
 
-// ─── PlayerRobot — tiny colored robot head per player ────────────────────────
-function PlayerRobot({ color, size = 16, volume = 1 }) {
-  const vmRef = useRef(null);
-
-  const { rive, RiveComponent } = useRive({
-    src: bracketBotVerticalRiv,
-    artboard: "Artboard",
-    stateMachines: "bracketBot",
-    autoplay: true,
-    layout: new Layout({ fit: Fit.Contain, alignment: Alignment.Center }),
-  });
-
-  useEffect(() => {
-    if (!rive) return;
-    const vm = rive.viewModelByName("ViewModel1");
-    if (!vm) return;
-    const vmi = vm.defaultInstance();
-    if (!vmi) return;
-    vmRef.current = vmi;
-    try { rive.bindViewModelInstance(vmi); } catch {}
-    if (color && color.length >= 7) {
-      const cp = vmi.color("colorProperty");
-      if (cp) cp.rgb(parseInt(color.slice(1,3),16), parseInt(color.slice(3,5),16), parseInt(color.slice(5,7),16));
-    }
-  }, [rive]); // eslint-disable-line
-
-  useEffect(() => {
-    const vmi = vmRef.current;
-    if (!vmi || !color || color.length < 7) return;
-    const cp = vmi.color("colorProperty");
-    if (cp) cp.rgb(parseInt(color.slice(1,3),16), parseInt(color.slice(3,5),16), parseInt(color.slice(5,7),16));
-  }, [color]);
-
-  useEffect(() => {
-    if (rive) rive.volume = volume;
-  }, [rive, volume]);
-
-  return (
-    <div style={{ width: size, height: size, flexShrink: 0 }}>
-      <RiveComponent style={{ width: "100%", height: "100%", display: "block" }} />
-    </div>
-  );
-}
 
 // ─── BracketBot ───────────────────────────────────────────────────────────────
 function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboard", stateMachine = "bracketBot", volume = 1 }) {
@@ -1075,11 +1186,7 @@ function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboa
     triggerRef.current = find("click", "Click", "tap", "Tap", "speak", "Speak", "talk", "Talk", "pressed", "Pressed");
   }, [rive]);
 
-  // Suppress false pointerleave/mouseleave on the canvas.
-  // When the cursor moves over a higher z-index element (lobbyContentWrap etc.) the
-  // browser fires pointerleave on the canvas, making Rive think the cursor left the
-  // 1920×1080 hitbox. We intercept in capture phase (before Rive's listener) and
-  // cancel the event as long as the cursor is still anywhere inside the viewport.
+  // Suppress false pointerleave/mouseleave on the canvas
   useEffect(() => {
     if (!rive) return;
     const canvas = wrapRef.current?.querySelector("canvas");
@@ -1098,18 +1205,15 @@ function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboa
     };
   }, [rive]);
 
-  // Global mouse → forward to Rive canvas so eye tracking works even when the cursor
-  // is over a higher z-index element (lobbyContentWrap etc.)
+  // Global mouse → forward to Rive canvas so eye tracking works even when cursor
+  // is over a higher z-index element
   const handleMouseMove = useCallback((e) => {
     if (!wrapRef.current) return;
     const rect = wrapRef.current.getBoundingClientRect();
-    // Update JS state-machine inputs if they exist
     const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const ny = Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height));
     if (xInputRef.current) xInputRef.current.value = nx * 100;
     if (yInputRef.current) yInputRef.current.value = ny * 100;
-    // Dispatch a synthetic pointermove directly on the canvas so Rive's internal
-    // cursor-follow receives the event regardless of z-index stacking
     const canvas = wrapRef.current.querySelector("canvas");
     if (canvas) {
       canvas.dispatchEvent(new PointerEvent("pointermove", {
@@ -1135,8 +1239,6 @@ function BracketBot({ width, height, src = bracketBotMainRiv, artboard = "Artboa
     if (triggerRef.current) {
       try { triggerRef.current.fire(); } catch { try { triggerRef.current.value = true; } catch {} }
     }
-    // Also dispatch synthetic pointer events directly on the canvas so Rive's
-    // internal audio/state machine responds natively (same pattern as pointermove)
     const canvas = wrapRef.current?.querySelector("canvas");
     if (canvas) {
       canvas.dispatchEvent(new PointerEvent("pointerdown", {
@@ -1248,6 +1350,123 @@ function TutorialOverlay({ onClose }) {
   );
 }
 
+// ─── Match Result Overlay ─────────────────────────────────────────────────────
+// Shows the result of the just-completed match before the next one starts.
+function MatchResultOverlay({ match, bracket, onDismiss }) {
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const [barsIn,  setBarsIn]  = useState(false);
+
+  useEffect(() => {
+    requestAnimationFrame(() => setMounted(true));
+    const t1 = setTimeout(() => setBarsIn(true), 350);
+    const t2 = setTimeout(() => setVisible(false), 4000);
+    const t3 = setTimeout(onDismiss, 4600);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []); // eslint-disable-line
+
+  const [c0, c1] = match.contenders;
+  const v0   = match.votes?.[c0] ?? 0;
+  const v1   = match.votes?.[c1] ?? 0;
+  const total = v0 + v1 || 1;
+  const winC  = match.winner;
+  const loseC = winC === c0 ? c1 : c0;
+  const vWin  = winC === c0 ? v0 : v1;
+  const vLose = winC === c0 ? v1 : v0;
+  const pctWin  = ((vWin  / total) * 100).toFixed(1);
+  const pctLose = ((vLose / total) * 100).toFixed(1);
+  const roundLabel = getMatchRoundLabel(bracket, match.id);
+
+  const ResultRow = ({ name, vCount, pct, isWinner }) => (
+    <div style={{ marginBottom: isWinner ? 14 : 0 }}>
+      <div style={{
+        fontSize: 9, letterSpacing: 4, marginBottom: 8,
+        color: isWinner ? "#c8f55a" : "#3a5a3a",
+        fontFamily: "'PT Mono', monospace",
+      }}>
+        {isWinner ? "▲  ADVANCES" : "✕  ELIMINATED"}
+      </div>
+      <div style={{
+        padding: "16px 20px",
+        background: isWinner ? "#0b1e0b" : "#070e07",
+        border: `1px solid ${isWinner ? "#2a5a2a" : "#111811"}`,
+        boxShadow: isWinner ? "0 0 28px #c8f55a16" : "none",
+      }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "baseline",
+          marginBottom: 10,
+        }}>
+          <div style={{
+            fontSize: isWinner ? 22 : 16, fontWeight: isWinner ? "bold" : "normal",
+            letterSpacing: 2, color: isWinner ? "#c8f55a" : "#3a5a3a",
+            fontFamily: "'PT Mono', monospace",
+            maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {name}
+          </div>
+          <div style={{ fontSize: isWinner ? 20 : 14, color: isWinner ? "#c8f55a" : "#2a4a2a", fontFamily: "'PT Mono', monospace" }}>
+            {pct}%
+          </div>
+        </div>
+        {/* Vote bar */}
+        <div style={{ height: 5, background: "#080e08", borderRadius: 3, marginBottom: 8, overflow: "hidden" }}>
+          <div style={{
+            height: "100%",
+            width: barsIn ? `${pct}%` : "0%",
+            background: isWinner ? "linear-gradient(90deg, #4a8a28, #c8f55a)" : "#1a2e1a",
+            borderRadius: 3,
+            transition: "width 900ms cubic-bezier(0.34, 1.2, 0.64, 1)",
+          }} />
+        </div>
+        <div style={{ fontSize: 10, letterSpacing: 1, color: isWinner ? "#5a8a3a" : "#283828", fontFamily: "'PT Mono', monospace" }}>
+          {vCount.toLocaleString()} votes
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      onClick={onDismiss}
+      style={{
+        position: "fixed", inset: 0, zIndex: 250,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.80)", backdropFilter: "blur(3px)",
+        opacity: mounted && visible ? 1 : 0,
+        transition: "opacity 600ms ease",
+        cursor: "pointer",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#050e05",
+          border: "1px solid #1a3a1a",
+          boxShadow: "0 0 80px #000000bb, 0 0 30px #0b200b",
+          padding: "32px 40px",
+          minWidth: 440, maxWidth: 580,
+          fontFamily: "'PT Mono', monospace",
+        }}
+      >
+        {/* Round label */}
+        <div style={{
+          fontSize: 10, letterSpacing: 6, color: "#2e4e2e",
+          textAlign: "center", marginBottom: 24,
+        }}>
+          {roundLabel}
+        </div>
+
+        <ResultRow name={winC}  vCount={vWin}  pct={pctWin}  isWinner={true}  />
+        <ResultRow name={loseC} vCount={vLose} pct={pctLose} isWinner={false} />
+
+        <div style={{ fontSize: 9, letterSpacing: 2, color: "#1a2e1a", textAlign: "center", marginTop: 20 }}>
+          click anywhere to continue
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function generateRoomCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars (0/O, 1/I)
   return Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
@@ -1271,7 +1490,8 @@ export default function BracketApp() {
     bracket, currentMatchId: currentMatch, champion, votedCount,
     tiebreaker, playerNames, scores, connected, globalStats,
     voters, playerColors, matchNote, setMatchNote, doubleVoter, liveReactions,
-    startNext, skip, playAgain, hostPickWinner, startRPS, startOneSecond, clearPlayers, setRpsRevealed, setMinigameSettings
+    startNext, skip, playAgain, hostPickWinner, startRPS, startOneSecond, startShapeHalve, clearPlayers, setRpsRevealed,
+    sequentialVoting, votingQueue, votingQueueIndex,
   } = useGameState(null, roomCode);
 
   const [windowWidth,  setWindowWidth]  = useState(window.innerWidth);
@@ -1286,6 +1506,7 @@ export default function BracketApp() {
   const [cameraTarget, setCameraTarget] = useState(null);
   const [zoomed,       setZoomed]       = useState(false);
   const [muted,        setMuted]        = useState(false);
+  const [lobbyMusicMuted, setLobbyMusicMuted] = useState(() => localStorage.getItem("bracket_lobbyMusicMuted") !== "false");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [cameraMode,   setCameraMode]   = useState(true);
   const [camTypeText,  setCamTypeText]  = useState("");
@@ -1295,6 +1516,8 @@ export default function BracketApp() {
   const [bumperSrc,    setBumperSrc]    = useState(null);
   const [bumperFading, setBumperFading] = useState(false);
   const [showBlackout, setShowBlackout] = useState(false);
+  const [finishedMatch,  setFinishedMatch]  = useState(null); // match result overlay
+  const [pendingBumper,  setPendingBumper]  = useState(null); // bumper delayed until result overlay clears
   const [showSettings, setShowSettings] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
@@ -1302,17 +1525,52 @@ export default function BracketApp() {
   const [sfxVolume,    setSfxVolume]    = useState(1);
   const [randomTiebreaker, setRandomTiebreaker] = useState(false);
   const [autoAdvanceDelay, setAutoAdvanceDelay] = useState(3);
-  const [minigamesEnabled,       setMinigamesEnabled]       = useState(true);
-  const [minigameAllowRps,       setMinigameAllowRps]       = useState(true);
-  const [minigameAllowOneSecond, setMinigameAllowOneSecond] = useState(true);
-  const [minigameFrequency,      setMinigameFrequency]      = useState("medium");
   const [showBumpers, setShowBumpers] = useState(() => localStorage.getItem("bracket_showBumpers") !== "false");
   const showBumpersRef = useRef(localStorage.getItem("bracket_showBumpers") !== "false");
   const [autoAdvanceRemaining, setAutoAdvanceRemaining] = useState(null);
+  const [showIntro, setShowIntro] = useState(false);
+  const [introTyped, setIntroTyped] = useState("");
+  const introHasFinishedRef = useRef(false);
   const [chatLog, setChatLog] = useState([]);
   const chatEndRef = useRef(null);
   const seenReactionIds = useRef(new Set());
   const reactionXRef = useRef({});
+
+  // Typewriter effect for intro screen
+  useEffect(() => {
+    if (!showIntro || !category) return;
+    const catDisplay = category === "?????" ? "something" : category;
+    const fullText = `Welcome, bracketeers.\n\nYour task at hand is to work together to determine the best ${catDisplay}.\n\nThis is important work so take your time to discuss, argue, and make your voices heard.\n\nDon't forget—this is the real world. Winning is more important than having fun.`;
+    let i = 0;
+    setIntroTyped("");
+    const typingAudio = new Audio(typingSfxSrc);
+    typingAudio.loop = true;
+    typingAudio.volume = 0.5;
+    if (!muted) typingAudio.play().catch(() => {});
+    const stopTyping = () => { typingAudio.pause(); typingAudio.currentTime = 0; };
+
+    // Intro voice-over — drop your MP3 into assets/audio/VO/ and update the import at the top
+    const voiceAudio = introVoiceSrc ? new Audio(introVoiceSrc) : null;
+    if (voiceAudio && !muted) voiceAudio.play().catch(() => {});
+
+    const interval = setInterval(() => {
+      i++;
+      setIntroTyped(fullText.slice(0, i));
+      if (i >= fullText.length) {
+        clearInterval(interval);
+        stopTyping();
+        setTimeout(() => {
+          introHasFinishedRef.current = true;
+          setShowIntro(false);
+        }, 5000);
+      }
+    }, 28);
+    return () => {
+      clearInterval(interval);
+      stopTyping();
+      if (voiceAudio) { voiceAudio.pause(); voiceAudio.currentTime = 0; }
+    };
+  }, [showIntro]); // eslint-disable-line
 
   // Capture text reactions into persistent chat log
   useEffect(() => {
@@ -1374,6 +1632,8 @@ export default function BracketApp() {
   const cameraModeRef = useRef(true);
   const lastBumperRoundRef      = useRef(null);  // { rIdx, isFinal } of last shown bumper
   const bumperFadingRef         = useRef(false); // sync flag for use inside video callbacks
+  const prevMatchForResultRef   = useRef(null);  // previous match ID for result overlay detection
+  const prevPhaseForResultRef   = useRef(null);  // previous phase for result overlay detection
   const firebaseBootstrappedRef = useRef(false); // true after first Firebase data load
   const camTypeInitRef = useRef(false);          // skip first render for typing animation
   const camTypeTimersRef = useRef({});           // holds interval/timeout for cleanup
@@ -1578,7 +1838,13 @@ export default function BracketApp() {
     if (prevPhase.current === "lobby" && phase !== "lobby") {
       if (!muted) startSfx.current?.play().catch(() => {});
       if (firebaseBootstrappedRef.current && showBumpersRef.current) setShowBlackout(true);
+      if (firebaseBootstrappedRef.current) {
+        introHasFinishedRef.current = false;
+        setShowIntro(true);
+        setIntroTyped("");
+      }
     }
+    if (phase === "lobby") introHasFinishedRef.current = false;
     prevPhase.current = phase;
   }, [phase]); // eslint-disable-line
 
@@ -1637,10 +1903,11 @@ export default function BracketApp() {
 
   // Sync muted state to all audio objects
   useEffect(() => {
-    [menuAudio, gameAudio, endAudio, rpsAudio, oneSecondAudio, startSfx, startAgainSfx, playerAddSfx, resetPlayersSfx, choiceMadeSfx].forEach((a) => {
+    [gameAudio, endAudio, rpsAudio, oneSecondAudio, startSfx, startAgainSfx, playerAddSfx, resetPlayersSfx, choiceMadeSfx].forEach((a) => {
       if (a.current) a.current.muted = muted;
     });
-  }, [muted]);
+    if (menuAudio.current) menuAudio.current.muted = muted || lobbyMusicMuted;
+  }, [muted, lobbyMusicMuted]);
 
   const toggleMute = () => setMuted((m) => !m);
 
@@ -1698,25 +1965,17 @@ export default function BracketApp() {
   useEffect(() => {
     if (phase !== "tiebreaker" || !tiebreaker || !randomTiebreaker) return;
     const roll = Math.random();
-    if (roll < 1 / 3) {
+    if (roll < 0.25) {
       startRPS();
-    } else if (roll < 2 / 3) {
+    } else if (roll < 0.5) {
       startOneSecond();
+    } else if (roll < 0.75) {
+      startShapeHalve();
     } else {
       const winner = Math.random() < 0.5 ? tiebreaker.c0 : tiebreaker.c1;
       hostPickWinner(winner);
     }
   }, [phase, tiebreaker?.matchId, randomTiebreaker]); // eslint-disable-line
-
-  // Sync minigame settings into useGameState ref whenever they change
-  useEffect(() => {
-    setMinigameSettings({
-      enabled: minigamesEnabled,
-      allowRps: minigameAllowRps,
-      allowOneSecond: minigameAllowOneSecond,
-      frequency: minigameFrequency,
-    });
-  }, [minigamesEnabled, minigameAllowRps, minigameAllowOneSecond, minigameFrequency]); // eslint-disable-line
 
   // Play zoom SFX (forward for zoom-in, reversed for zoom-out)
   const playZoomSfx = (reversed) => {
@@ -1779,6 +2038,39 @@ export default function BracketApp() {
   const liveMatch = currentMatch && bracket
     ? allMatches(bracket).find((m) => m.id === currentMatch)
     : null;
+
+  // Detect when a regular-voting match finishes and show the result overlay
+  useEffect(() => {
+    const prevMatch = prevMatchForResultRef.current;
+    const prevPhase = prevPhaseForResultRef.current;
+    prevMatchForResultRef.current = currentMatch;
+    prevPhaseForResultRef.current = phase;
+    // Only fire when moving from one "playing" match to the next (not from a tiebreaker phase)
+    if (phase !== "playing" || prevPhase !== "playing") return;
+    if (!prevMatch || !currentMatch || prevMatch === currentMatch) return;
+    if (!bracket) return;
+    const completed = allMatches(bracket).find(m => m.id === prevMatch);
+    if (completed?.winner) setFinishedMatch(completed);
+  }, [phase, currentMatch, bracket]); // eslint-disable-line
+
+  // Clear result overlay + pending bumper immediately if game leaves "playing"
+  // (e.g. a vote tie triggers tiebreaker during the 4.6s overlay window — must expose TiebreakerPanel)
+  useEffect(() => {
+    if (phase === "playing") return;
+    if (finishedMatch) setFinishedMatch(null);
+    if (pendingBumper) setPendingBumper(null);
+  }, [phase]); // eslint-disable-line
+
+  // Show pending bumper once the result overlay clears — but discard if we've since left "playing"
+  // (e.g. a tie happened during the overlay, bumper must not cover TiebreakerPanel / minigame)
+  useEffect(() => {
+    if (!pendingBumper || finishedMatch) return;
+    if (phase !== "playing") { setPendingBumper(null); return; } // stale; drop it
+    bumperFadingRef.current = false;
+    setBumperFading(false);
+    setBumperSrc(pendingBumper);
+    setPendingBumper(null);
+  }, [pendingBumper, finishedMatch, phase]);
 
   // Keep cameraModeRef in sync for use inside non-React listeners
   useEffect(() => { cameraModeRef.current = cameraMode; }, [cameraMode]);
@@ -1896,9 +2188,8 @@ export default function BracketApp() {
     if (!showBumpers) { setShowBlackout(false); return; }
     const src = pickBumperSrc(bracket, curr.rIdx, curr.isFinal);
     if (src) {
-      bumperFadingRef.current = false;
-      setBumperFading(false);
-      setBumperSrc(src);
+      // Delay the bumper until the match result overlay has dismissed
+      setPendingBumper(src);
     } else {
       setShowBlackout(false);
     }
@@ -2038,6 +2329,19 @@ export default function BracketApp() {
           <button className="reset-btn-outer" onClick={handleClearPlayers} style={{ ...s.clearBtnSmall, pointerEvents: "auto" }}>
             <span className="reset-arrow" style={{ display: "inline-flex", width: 16, height: 16 }}><IconReset /></span>
             {" RESET"}
+          </button>
+          <button
+            style={{ ...s.settingsBtn, pointerEvents: "auto", color: lobbyMusicMuted ? "#bb6666" : "#c8f55a", borderColor: lobbyMusicMuted ? "#bb6666" : "#c8f55a" }}
+            onClick={() => { const next = !lobbyMusicMuted; setLobbyMusicMuted(next); localStorage.setItem("bracket_lobbyMusicMuted", String(next)); }}
+            title={lobbyMusicMuted ? "Unmute music" : "Mute music"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ display: "block" }}>
+              {lobbyMusicMuted ? (
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM19 12c0 3.07-1.64 5.74-4 7.17V4.83C17.36 6.26 19 8.93 19 12zM5 7l-4 4 4 4V7z"/>
+              ) : (
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM19 12c0 3.07-1.64 5.74-4 7.17V4.83C17.36 6.26 19 8.93 19 12z"/>
+              )}
+            </svg>
           </button>
           <button className="settings-btn-outer" style={{ ...s.settingsBtn, pointerEvents: "auto" }} onClick={() => setShowSettings(true)} title="Settings">
             <span className="settings-gear" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}><IconGear /></span>
@@ -2259,25 +2563,6 @@ export default function BracketApp() {
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>AUTO-ADVANCE</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[0, 2, 3, 5].map(sec => (
-                    <button key={sec}
-                      style={{
-                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                        background: autoAdvanceDelay === sec ? "#0f1f0f" : "#0a140a",
-                        color: autoAdvanceDelay === sec ? "#c8f55a" : "#2a5a2a",
-                        border: autoAdvanceDelay === sec ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                      }}
-                      onClick={() => setAutoAdvanceDelay(sec)}
-                    >
-                      {sec === 0 ? "OFF" : `${sec}S`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>ROUND VIDEOS</span>
                 <div style={{ display: "flex", gap: 8 }}>
                   {[true, false].map(on => (
@@ -2294,56 +2579,6 @@ export default function BracketApp() {
                       {on ? "ON" : "OFF"}
                     </button>
                   ))}
-                </div>
-              </div>
-              {/* Pre-match minigames */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>PRE-MATCH MINIGAMES</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[true, false].map(on => (
-                    <button key={String(on)}
-                      style={{
-                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                        background: minigamesEnabled === on ? "#0f1f0f" : "#0a140a",
-                        color: minigamesEnabled === on ? "#c8f55a" : "#2a5a2a",
-                        border: minigamesEnabled === on ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                      }}
-                      onClick={() => setMinigamesEnabled(on)}
-                    >{on ? "ON" : "OFF"}</button>
-                  ))}
-                </div>
-                <div style={{ opacity: minigamesEnabled ? 1 : 0.3, pointerEvents: minigamesEnabled ? "auto" : "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>INCLUDE</span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {[["rps", "RPS", minigameAllowRps, setMinigameAllowRps], ["os", "ONE SEC", minigameAllowOneSecond, setMinigameAllowOneSecond]].map(([key, label, val, setter]) => (
-                      <button key={key}
-                        style={{
-                          flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                          letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                          background: val ? "#0f1f0f" : "#0a140a",
-                          color: val ? "#c8f55a" : "#2a5a2a",
-                          border: val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                        }}
-                        onClick={() => setter(v => !v)}
-                      >{label}</button>
-                    ))}
-                  </div>
-                  <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>FREQUENCY</span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {[["low", "LOW"], ["medium", "MED"], ["high", "HIGH"]].map(([val, label]) => (
-                      <button key={val}
-                        style={{
-                          flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                          letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                          background: minigameFrequency === val ? "#0f1f0f" : "#0a140a",
-                          color: minigameFrequency === val ? "#c8f55a" : "#2a5a2a",
-                          border: minigameFrequency === val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                        }}
-                        onClick={() => setMinigameFrequency(val)}
-                      >{label}</button>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
@@ -2383,6 +2618,19 @@ export default function BracketApp() {
   }
   const showRpsPanel = phase === "rps" ||
     !!(rpsPhaseEndTimeRef.current && Date.now() < rpsPhaseEndTimeRef.current);
+
+  // Intro overlay — compute synchronously so the overlay blocks the first "playing" render
+  // without waiting for useEffect (prevents the bracket flashing before the message)
+  const introCatDisplay = category === "?????" ? "something" : (category || "");
+  const introFullText = introCatDisplay
+    ? `Welcome, bracketeers.\n\nYour task at hand is to work together to determine the best ${introCatDisplay}.\n\nThis is important work so take your time to discuss, argue, and make your voices heard.\n\nDon't forget—this is the real world. Winning is more important than having fun.`
+    : "";
+  // Show overlay on the first "playing" render (prevPhase.current still === "lobby" before effect runs)
+  // AND while intro is actively running — but never after intro has finished
+  const showIntroOverlay = !introHasFinishedRef.current && (
+    showIntro ||
+    (phase === "playing" && prevPhase.current === "lobby" && firebaseBootstrappedRef.current)
+  );
 
   // ── Playing / Finished ──
   return (
@@ -2433,32 +2681,6 @@ export default function BracketApp() {
         <ExitButton onExit={handlePlayAgain} style={s.exitBtn} />
       </div>
 
-      {/* Player list - top left */}
-      {Object.keys(playerNames).length > 0 && !champion && windowWidth >= 900 && (
-        <div style={s.playerListBox}>
-          <div style={s.playerListTitle}>PLAYERS</div>
-          {Object.entries(playerNames).map(([pid, name], i) => {
-            const color = PLAYER_COLORS[(playerColors?.[pid] ?? i) % PLAYER_COLORS.length];
-            return (
-              <div key={pid} style={{ ...s.playerListItem, color, display: "flex", alignItems: "center", gap: 6 }}>
-                <PlayerRobot color={color} size={42} volume={sfxVolume} />
-                <span style={{ lineHeight: 1, alignSelf: "center", position: "relative", top: 5 }}>{name}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* BracketBot — top-right corner box (hidden on champion screen or narrow screens) */}
-      {!champion && windowWidth >= 900 && (
-        <div style={{
-          position: "absolute", top: 68, right: 16, zIndex: 20,
-          border: "1px solid #1a2e1a", background: "#060e06",
-          borderRadius: 4, overflow: "hidden",
-        }}>
-          <BracketBot width={220} height={124} src={bracketBotMapRiv} volume={sfxVolume} />
-        </div>
-      )}
 
       {champion && (
         <div className="anim-champReveal" style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
@@ -2620,7 +2842,7 @@ export default function BracketApp() {
 
       {phase === "tiebreaker" && (
         <TiebreakerPanel tiebreaker={tiebreaker} isHost={isHost}
-          hostPickWinner={hostPickWinner} startRPS={startRPS} startOneSecond={startOneSecond}
+          hostPickWinner={hostPickWinner} startRPS={startRPS} startOneSecond={startOneSecond} startShapeHalve={startShapeHalve}
           voters={voters} playerColors={playerColors} />
       )}
 
@@ -2640,6 +2862,7 @@ export default function BracketApp() {
           match={liveMatch} votedCount={votedCount} totalPlayers={totalPlayers}
           voters={voters} playerNames={playerNames} playerColors={playerColors}
           matchNote={matchNote} setMatchNote={setMatchNote} isHost={isHost}
+          sequentialVoting={sequentialVoting} votingQueue={votingQueue} votingQueueIndex={votingQueueIndex}
         />
       )}
 
@@ -2683,9 +2906,12 @@ export default function BracketApp() {
       {phase === "oneSecond" && tiebreaker?.oneSecond && (
         <BigOneSecondPanel tiebreaker={tiebreaker} playerNames={playerNames} playerColors={playerColors} preMatch={!!tiebreaker?.preMatch} />
       )}
+      {phase === "shapeHalve" && tiebreaker?.shapeHalve && (
+        <BigShapeHalvePanel tiebreaker={tiebreaker} playerNames={playerNames} playerColors={playerColors} preMatch={!!tiebreaker?.preMatch} />
+      )}
 
       {/* Camera viewport — hidden during big tiebreaker panels and on champion screen */}
-      {!champion && !showRpsPanel && phase !== "oneSecond" && <div
+      {!champion && !showRpsPanel && phase !== "oneSecond" && phase !== "shapeHalve" && <div
         style={{ ...s.viewport, background: "#060e06", userSelect: "none" }}
         ref={viewportRef}
         onMouseDown={handleMouseDown}
@@ -2712,6 +2938,16 @@ export default function BracketApp() {
           </div>
         </div>
       </div>}
+
+      {/* Match result overlay — shown briefly after each match resolves */}
+      {finishedMatch && bracket && (
+        <MatchResultOverlay
+          key={finishedMatch.id}
+          match={finishedMatch}
+          bracket={bracket}
+          onDismiss={() => setFinishedMatch(null)}
+        />
+      )}
 
       {/* Round bumper overlay — also covers the bracket during the gap between game-start and bumper load */}
       {(bumperSrc || showBlackout) && (
@@ -2908,56 +3144,6 @@ export default function BracketApp() {
               </div>
             </div>
 
-            {/* Pre-match minigames */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 10, letterSpacing: 3, color: "#6a8a6a" }}>PRE-MATCH MINIGAMES</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[true, false].map(on => (
-                  <button key={String(on)}
-                    style={{
-                      flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                      letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                      background: minigamesEnabled === on ? "#0f1f0f" : "#0a140a",
-                      color: minigamesEnabled === on ? "#c8f55a" : "#2a5a2a",
-                      border: minigamesEnabled === on ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                    }}
-                    onClick={() => setMinigamesEnabled(on)}
-                  >{on ? "ON" : "OFF"}</button>
-                ))}
-              </div>
-              <div style={{ opacity: minigamesEnabled ? 1 : 0.3, pointerEvents: minigamesEnabled ? "auto" : "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>INCLUDE</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[["rps", "RPS", minigameAllowRps, setMinigameAllowRps], ["os", "ONE SEC", minigameAllowOneSecond, setMinigameAllowOneSecond]].map(([key, label, val, setter]) => (
-                    <button key={key}
-                      style={{
-                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                        background: val ? "#0f1f0f" : "#0a140a",
-                        color: val ? "#c8f55a" : "#2a5a2a",
-                        border: val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                      }}
-                      onClick={() => setter(v => !v)}
-                    >{label}</button>
-                  ))}
-                </div>
-                <span style={{ fontFamily: "'PT Mono',monospace", fontSize: 9, letterSpacing: 3, color: "#6a8a6a" }}>FREQUENCY</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[["low", "LOW"], ["medium", "MED"], ["high", "HIGH"]].map(([val, label]) => (
-                    <button key={val}
-                      style={{
-                        flex: 1, padding: "10px 0", fontFamily: "'PT Mono',monospace", fontSize: 10,
-                        letterSpacing: 2, cursor: "pointer", borderRadius: 3,
-                        background: minigameFrequency === val ? "#0f1f0f" : "#0a140a",
-                        color: minigameFrequency === val ? "#c8f55a" : "#2a5a2a",
-                        border: minigameFrequency === val ? "2px solid #c8f55a" : "1px solid #1a2e1a",
-                      }}
-                      onClick={() => setMinigameFrequency(val)}
-                    >{label}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -3005,7 +3191,7 @@ export default function BracketApp() {
       {chatLog.length > 0 && (
         <div style={{
           position: "fixed", bottom: 8, left: 8, zIndex: 600, pointerEvents: "none",
-          width: 320, maxHeight: 220, overflowY: "auto",
+          width: 480, maxHeight: 320, overflowY: "auto",
           display: "flex", flexDirection: "column", gap: 2,
           maskImage: "linear-gradient(to bottom, transparent 0%, black 20%)",
           WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 20%)",
@@ -3016,8 +3202,8 @@ export default function BracketApp() {
             const name = playerNames?.[r.pid] || "?";
             return (
               <div key={r.localId} style={{
-                fontFamily: "'PT Mono', monospace", fontSize: 13, lineHeight: 1.4,
-                background: "rgba(6,14,6,0.7)", borderRadius: 4, padding: "2px 8px",
+                fontFamily: "'PT Mono', monospace", fontSize: 22, lineHeight: 1.4,
+                background: "rgba(6,14,6,0.7)", borderRadius: 4, padding: "4px 10px",
                 whiteSpace: "pre-wrap", wordBreak: "break-word",
               }}>
                 <span style={{ color, fontWeight: "bold" }}>{name}: </span>
@@ -3026,6 +3212,38 @@ export default function BracketApp() {
             );
           })}
           <div ref={chatEndRef} />
+        </div>
+      )}
+
+      {/* Intro typewriter overlay */}
+      {showIntroOverlay && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 800,
+          background: "#060e06",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "60px 80px", boxSizing: "border-box",
+        }}>
+          <style>{`
+            @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+          `}</style>
+          {/* Relative wrapper — invisible spacer reserves the final text height so
+              the block never shifts as characters type in */}
+          <div style={{ position: "relative", maxWidth: 900, width: "100%",
+            fontFamily: "'PT Mono', monospace", fontSize: 28, lineHeight: 1.8 }}>
+            {/* Invisible spacer — always the full final text height */}
+            <div style={{ visibility: "hidden", whiteSpace: "pre-wrap", userSelect: "none" }}>
+              {introFullText}{"▌"}
+            </div>
+            {/* Typed text laid over the spacer */}
+            <div style={{
+              position: "absolute", top: 0, left: 0, right: 0,
+              color: "#c8f55a", textShadow: "0 0 24px #c8f55a44",
+              whiteSpace: "pre-wrap",
+            }}>
+              {introTyped}
+              {showIntro && <span style={{ animation: "blink 0.9s step-end infinite" }}>▌</span>}
+            </div>
+          </div>
         </div>
       )}
 
